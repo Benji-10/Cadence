@@ -74,6 +74,7 @@ import {
 import { useSettings } from "@/lib/settings-store";
 import { useTemplates } from "@/lib/templates-store";
 import { TemplatesBar } from "./templates-bar";
+import { LocationAutocomplete } from "./location-autocomplete";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -746,12 +747,13 @@ function EditForm({
           label="Location"
           icon={<MapPin className="size-3.5 text-muted-foreground" />}
         >
-          <Input
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            placeholder="Add a place"
-            className="h-7 w-[60%] text-xs"
-          />
+          <div className="w-[60%]">
+            <LocationAutocomplete
+              value={location}
+              onChange={setLocation}
+              placeholder="Search a place…"
+            />
+          </div>
         </Row>
 
         <Row label="Travel time (min)">

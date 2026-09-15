@@ -97,16 +97,17 @@ export function Toolbar({
         </div>
 
         {/* Center navigation */}
-        <div className="mx-auto flex items-center gap-1 sm:gap-2">
-          <Button variant="ghost" size="icon" onClick={onPrev} aria-label="Previous">
-            <ChevronLeft className="size-5" />
+        <div className="mx-auto flex items-center gap-0.5 sm:gap-2">
+          <Button variant="ghost" size="icon" onClick={onPrev} aria-label="Previous" className="size-8">
+            <ChevronLeft className="size-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={onToday} className="px-3">
+          <Button variant="ghost" size="sm" onClick={onToday} className="px-2 text-xs sm:px-3">
             Today
           </Button>
-          <Button variant="ghost" size="icon" onClick={onNext} aria-label="Next">
-            <ChevronRight className="size-5" />
+          <Button variant="ghost" size="icon" onClick={onNext} aria-label="Next" className="size-8">
+            <ChevronRight className="size-4" />
           </Button>
+          {/* Full date label — desktop only */}
           <div className="ml-1 hidden min-w-[140px] text-center text-sm font-semibold sm:min-w-[200px] sm:text-base md:block">
             {view === "week"
               ? format(visibleDate, "MMM yyyy")
@@ -115,7 +116,7 @@ export function Toolbar({
               : format(visibleDate, "MMM d, yyyy")}
           </div>
           {/* Compact label for small screens */}
-          <div className="ml-1 min-w-[110px] text-center text-sm font-semibold sm:hidden">
+          <div className="ml-1 hidden min-w-[80px] text-center text-xs font-semibold sm:hidden">
             {view === "week"
               ? format(visibleDate, "MMM yyyy")
               : view === "month"
@@ -126,46 +127,50 @@ export function Toolbar({
 
         {/* Right actions */}
         <div className="flex items-center gap-1 sm:gap-2">
-          {/* Search (cmd-k) */}
+          {/* Search (cmd-k) — hidden on mobile, accessible via More menu */}
           <Button
             variant="ghost"
             size="icon"
             onClick={onOpenSearch}
             aria-label="Search events"
             title="Search (⌘K)"
+            className="hidden sm:inline-flex"
           >
             <Search className="size-4" />
           </Button>
 
-          {/* Insights */}
+          {/* Insights — hidden on mobile */}
           <Button
             variant="ghost"
             size="icon"
             onClick={onOpenInsights}
             aria-label="Week insights"
             title="Week insights"
+            className="hidden sm:inline-flex"
           >
             <BarChart3 className="size-4" />
           </Button>
 
-          {/* Free-slot finder */}
+          {/* Free-slot finder — hidden on mobile */}
           <Button
             variant="ghost"
             size="icon"
             onClick={onOpenFreeSlot}
             aria-label="Find a free slot"
             title="Find a free slot"
+            className="hidden sm:inline-flex"
           >
             <CalendarSearch className="size-4" />
           </Button>
 
-          {/* Settings */}
+          {/* Settings — hidden on mobile */}
           <Button
             variant="ghost"
             size="icon"
             onClick={onOpenSettings}
             aria-label="Settings"
             title="Settings"
+            className="hidden sm:inline-flex"
           >
             <Settings className="size-4" />
           </Button>
@@ -173,19 +178,24 @@ export function Toolbar({
           {/* Day/Week/Month/List segmented toggle */}
           <div className="flex items-center rounded-md border border-border bg-muted/40 p-0.5">
             <SegBtn active={view === "day"} onClick={() => onViewChange("day")}>
-              Day
+              <span className="sm:hidden">D</span>
+              <span className="hidden sm:inline">Day</span>
             </SegBtn>
             <SegBtn active={view === "week"} onClick={() => onViewChange("week")}>
-              Week
+              <span className="sm:hidden">W</span>
+              <span className="hidden sm:inline">Week</span>
             </SegBtn>
             <SegBtn active={view === "month"} onClick={() => onViewChange("month")}>
-              Month
+              <span className="sm:hidden">M</span>
+              <span className="hidden sm:inline">Month</span>
             </SegBtn>
             <SegBtn active={view === "agenda"} onClick={() => onViewChange("agenda")}>
-              List
+              <span className="sm:hidden">L</span>
+              <span className="hidden sm:inline">List</span>
             </SegBtn>
           </div>
 
+          {/* Auto-optimize — hidden on mobile (accessible via More) */}
           <Button
             variant="default"
             size="sm"
@@ -195,20 +205,11 @@ export function Toolbar({
             <Sparkles className="size-3.5" />
             Auto-optimize
           </Button>
-          <Button
-            variant="default"
-            size="icon"
-            onClick={onAutoOptimize}
-            className="bg-emerald-600 text-white hover:bg-emerald-700 sm:hidden"
-            aria-label="Auto-optimize"
-          >
-            <Sparkles className="size-4" />
-          </Button>
 
-          {/* Calendars */}
+          {/* Calendars — hidden on mobile */}
           <Popover open={calendarsOpen} onOpenChange={setCalendarsOpen}>
             <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5">
+              <Button variant="outline" size="sm" className="hidden gap-1.5 sm:inline-flex">
                 <span className="hidden sm:inline">Calendars</span>
                 <span className="sm:hidden">Cals</span>
               </Button>
@@ -224,6 +225,7 @@ export function Toolbar({
             size="icon"
             onClick={onEnableNotifications}
             aria-label="Notifications"
+            className="hidden sm:inline-flex"
           >
             {notificationPermission === "granted" ? (
               <Bell className="size-4 text-emerald-600" />
@@ -240,6 +242,7 @@ export function Toolbar({
             size="icon"
             onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
             aria-label="Toggle theme"
+            className="hidden sm:inline-flex"
           >
             {resolvedTheme === "dark" ? (
               <Sun className="size-4" />
@@ -256,6 +259,24 @@ export function Toolbar({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {/* Mobile-only quick actions (hidden buttons' equivalents) */}
+              <DropdownMenuItem onClick={onOpenSearch} className="sm:hidden">
+                <Search className="size-4" />
+                Search events
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onOpenInsights} className="sm:hidden">
+                <BarChart3 className="size-4" />
+                Week insights
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onOpenFreeSlot} className="sm:hidden">
+                <CalendarSearch className="size-4" />
+                Find a free slot
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onOpenSettings} className="sm:hidden">
+                <Settings className="size-4" />
+                Settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="sm:hidden" />
               <DropdownMenuItem
                 onClick={() =>
                   window.open("/api/ical", "_blank")

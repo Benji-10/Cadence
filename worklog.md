@@ -422,3 +422,40 @@ TECHNICAL:
 - Templates don't yet capture alerts/priority/recurrence — only core scheduling fields. Could be extended.
 - No template management UI outside the create sheet (can't reorder, edit, or export templates).
 - Next rounds: split persistence, auth, occurrence exceptions, template management panel, template alert/priority capture.
+
+---
+Task ID: 15 (user feedback round — mobile + intelligence + location + overnight)
+Agent: main
+Task: Address user feedback: overnight split, manual override, same-day auto-adjust, location autocomplete, mobile suitability.
+
+## Current project status / assessment
+- App stable. Addressed all 5 items from user feedback.
+
+## Completed modifications / verification results
+1. **Overnight event split at midnight** (`splitOvernightEvents` in `calendar-ui.ts`). Events crossing midnight are now split into per-day chunks (e.g. Sleep 22:50→06:50 becomes 22:50→00:00 on the start day and 00:00→06:50 on the next day). No more blocks extending past the 24h column boundary. Wired into the calendar-app events memo so all views benefit. VERIFIED: Tuesday's sleep now shows as "Sleep, 22:50 to 00:00" on Tuesday and "Sleep, 00:00 to 06:50" on Wednesday.
+
+2. **Manual drag override of fixed events**. Removed the hard block in `useEventDrag` — all events (including fixed/locked) can now be dragged. When a move overlaps a fixed event, it's ALLOWED with a warning toast ("Moved onto a fixed event — check for conflicts") instead of being blocked. This lets the user place homework over a lecture manually.
+
+3. **Same-day auto-adjust**. `handleMove` now constrains the `rescheduleAround` range to the anchor's day only (00:00→24:00) so bumped tasks don't spill to other days. The toast says "also bumped N tasks on the same day." Also strips `#night`/`#occ` suffixes from split/recurrence chunk IDs before persisting.
+
+4. **Location autocomplete via OpenStreetMap Nominatim** (`location-autocomplete.tsx`). Replaced the plain text input in the edit sheet with a debounced autocomplete that queries `nominatim.openstreetmap.org/search` (free, no API key). Shows a dropdown of 5 results with primary name + secondary detail. Arrow-key navigation + Enter to select. VERIFIED: typing "London" showed "Greater London, England, United Kingdom", "City of London", "London Southwestern Ontario, Canada" etc.; selecting one filled the field.
+
+5. **Mobile suitability**. Toolbar restructured for 375px:
+   - View toggle shows single-letter labels (D/W/M/L) on mobile, full labels on desktop.
+   - Search, Insights, Free-slot, Settings, Calendars, Notifications, Theme, Auto-optimize buttons hidden on mobile — all accessible via the More menu.
+   - Center navigation compacted (smaller chevrons, smaller Today button, compact date label).
+   - VERIFIED: toolbar `scrollWidth === clientWidth === 375` (no overflow).
+
+TECHNICAL:
+- `splitOvernightEvents` walks each event from start-day to end-day, creating `{parentId}#night{idx}` chunks with clipped start/end times.
+- `handleMove` strips `#` suffixes from event IDs before API calls so split/recurrence chunks persist to the correct parent event.
+- Nominatim requests include `Accept-Language: en` header and 400ms debounce (within their 1 req/sec policy).
+- `bun run lint` clean. No runtime errors across all 4 views on both mobile and desktop.
+
+## Unresolved issues / risks + next-phase recommendations
+- Split persistence: bumped tasks that don't fit one slot still persist only the first chunk. Still open.
+- Netlify Identity auth gating: still widget-only. Still open.
+- Occurrence-exception editing: still edits parent. Still open.
+- Nominatim rate limits (1 req/sec) could be hit on fast typing; the 400ms debounce handles this.
+- The overnight split is view-side only; the API still stores the original span. Editing a split chunk edits the parent (correct behavior).
+- Next rounds: split persistence, auth, occurrence exceptions.

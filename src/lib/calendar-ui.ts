@@ -161,6 +161,47 @@ export function snapMins(mins: number, step = 15): number {
   return Math.round(mins / step) * step;
 }
 
+// Split events that cross midnight into per-day chunks so each renders within
+// a single day column (mirrors iOS Calendar). An event from 22:50→06:50 becomes
+// two chunks: 22:50→00:00 (on the start day) and 00:00→06:50 (on the next day).
+// All-day events pass through unchanged.
+export function splitOvernightEvents(events: CalendarEvent[]): CalendarEvent[] {
+  const out: CalendarEvent[] = [];
+  for (const ev of events) {
+    if (ev.allDay) {
+      out.push(ev);
+      continue;
+    }
+    const start = parseISO(ev.start);
+    const end = parseISO(ev.end);
+    if (isSameDay(start, end)) {
+      out.push(ev);
+      continue;
+    }
+    // Split into per-day chunks. Walk from start day to end day.
+    let cursor = new Date(start);
+    cursor.setHours(0, 0, 0, 0);
+    let chunkIdx = 0;
+    while (cursor < end) {
+      const dayEnd = new Date(cursor);
+      dayEnd.setDate(dayEnd.getDate() + 1); // midnight = start of next day
+      const chunkStart = cursor < start ? start : cursor;
+      const chunkEnd = dayEnd < end ? dayEnd : end;
+      if (chunkStart < chunkEnd) {
+        out.push({
+          ...ev,
+          id: `${ev.id}#night${chunkIdx}`,
+          start: chunkStart.toISOString(),
+          end: chunkEnd.toISOString(),
+        });
+      }
+      cursor = dayEnd;
+      chunkIdx++;
+    }
+  }
+  return out;
+}
+
 // Detect pairs of events that overlap in time (and aren't allowed-overlap
 // pairs like laundry+work). Returns a Set of event IDs that are in conflict.
 export function conflictingEventIds(events: CalendarEvent[]): Set<string> {

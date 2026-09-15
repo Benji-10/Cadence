@@ -45,7 +45,7 @@ import {
   CalendarVisibilityContext,
   type VisibilityCtx,
 } from "./visibility-context";
-import { HOUR_HEIGHT } from "@/lib/calendar-ui";
+import { HOUR_HEIGHT, splitOvernightEvents } from "@/lib/calendar-ui";
 
 type View = "day" | "week" | "month" | "agenda";
 
@@ -115,8 +115,10 @@ export function CalendarApp() {
   const rawEvents: CalendarEvent[] = eventsQ.data?.events ?? [];
   // Expand recurring events into concrete occurrences within the visible range
   // so the grid shows each repeat. One-off events pass through unchanged.
+  // Then split any overnight events at midnight so each chunk renders within a
+  // single day column (mirrors iOS Calendar — no blocks extending past 24h).
   const events: CalendarEvent[] = useMemo(
-    () => expandAllRecurrence(rawEvents, range.from, range.to),
+    () => splitOvernightEvents(expandAllRecurrence(rawEvents, range.from, range.to)),
     [rawEvents, range.from, range.to]
   );
   const calendars = calendarsQ.data?.calendars ?? [];
@@ -285,29 +287,37 @@ export function CalendarApp() {
   };
 
   // ---- Move (drag) ----
+  // Manual moves ALLOW overlap with fixed events (the user explicitly dragged
+  // it there — e.g. homework over a lecture). Conflicting flexible tasks on
+  // the SAME day are auto-bumped; other days are left untouched.
   const handleMove = useCallback(
     async (event: CalendarEvent, newStart: string, newEnd: string) => {
+      // The event from the grid may be a split chunk (#night) or recurrence
+      // occurrence (#occ). Strip the suffix to get the real DB id.
+      const realId = event.id.split("#")[0];
+      const newStartDate = new Date(newStart);
+      // Constrain auto-bump to the same day as the new start.
+      const dayStart = new Date(newStartDate);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+
+      // Check for fixed-event overlaps so we can warn (but still allow).
       const validation = validateWindow(event, newStart, newEnd, events);
-      if (!validation.valid) {
-        toast.error(
-          "Can't move — " + (validation.reason ?? "overlaps a fixed event.")
-        );
-        return;
-      }
+
       try {
         const res = await reorderMut.mutateAsync({
           mode: "around",
-          anchor: event,
+          anchor: { ...event, id: realId },
           newStart,
           newEnd,
           events,
-          rangeStart: range.from,
-          rangeEnd: range.to,
+          rangeStart: dayStart.toISOString(),
+          rangeEnd: dayEnd.toISOString(),
         });
         const updates: { id: string; patch: Partial<CalendarEvent> }[] = [
-          { id: event.id, patch: { start: newStart, end: newEnd } },
+          { id: realId, patch: { start: newStart, end: newEnd } },
           ...res.changes.map((c) => ({
-            id: c.eventId,
+            id: c.eventId.split("#")[0],
             patch: { start: c.toStart, end: c.toEnd },
           })),
         ];
@@ -317,13 +327,19 @@ export function CalendarApp() {
         );
         await Promise.all(unique.map((u) => updateMut.mutateAsync(u)));
         const movedCount = unique.length - 1;
-        toast.success(
-          movedCount > 0
-            ? `Moved "${event.title}" — also bumped ${movedCount} task${
-                movedCount > 1 ? "s" : ""
-              }.`
-            : `Moved "${event.title}".`
-        );
+        if (!validation.valid) {
+          toast.warning(
+            `Moved "${event.title}" onto a fixed event — check for conflicts.`
+          );
+        } else {
+          toast.success(
+            movedCount > 0
+              ? `Moved "${event.title}" — also bumped ${movedCount} task${
+                  movedCount > 1 ? "s" : ""
+                } on the same day.`
+              : `Moved "${event.title}".`
+          );
+        }
         if (res.notes.length > 0) {
           toast.info(res.notes[0], { duration: 6000 });
         }
@@ -335,7 +351,8 @@ export function CalendarApp() {
   );
 
   const handleBlockedMove = useCallback((event: CalendarEvent) => {
-    toast.error(`Can't move "${event.title}" — it's a fixed event.`);
+    // No longer blocked — fixed events are draggable. Kept for API compat.
+    void event;
   }, []);
 
   // Jump to an event from the search palette: switch to Day view on its date

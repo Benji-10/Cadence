@@ -109,10 +109,9 @@ export function useEventDrag(opts: UseEventDragOptions) {
 
   const onPointerDown = useCallback(
     (event: CalendarEvent, e: React.PointerEvent) => {
-      if (event.flexibility === "fixed") {
-        optsRef.current.onBlocked(event);
-        return;
-      }
+      // All events can be dragged — the user has per-event control. Fixed
+      // events that are dragged will show a warning on drop (handled by the
+      // caller's onMove), but we don't block the drag itself.
       e.preventDefault();
       e.stopPropagation();
       beginDrag(event, e.clientX, e.clientY);
