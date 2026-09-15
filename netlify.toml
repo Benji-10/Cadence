@@ -1,0 +1,27 @@
+[build]
+  command = "bun run build"
+  publish = ".next"
+
+[build.environment]
+  # Next.js 16 on Netlify uses the official plugin (auto-detected).
+  NEXT_USE_NETLIFY = "true"
+  # Set DATABASE_URL in the Netlify dashboard to your Neon pooled connection:
+  # postgresql://user:pass@ep-xxx-pooler.<region>.aws.neon.tech/neondb?sslmode=require
+  # (Use the POOLED connection string — the direct connection is a paid add-on.)
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Static assets (icons, manifest, service worker) are served as-is.
+[[redirects]]
+  from = "/sw.js"
+  to = "/sw.js"
+  status = 200
+
+# Identity widget is injected via a script tag in <head>.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  # Don't shadow the API or _next routes.
+  force = false

@@ -1,0 +1,82 @@
+// Prisma schema for the intelligent calendar.
+//
+// NOTE on database provider:
+// This schema works with BOTH SQLite (local dev / sandbox) and PostgreSQL (Neon).
+// To deploy on Neon:
+//   1. Set `provider = "postgresql"` below.
+//   2. Set DATABASE_URL env var to your Neon connection string, e.g.
+//      DATABASE_URL="postgresql://user:pass@ep-xxx-pooler.region.aws.neon.tech/neondb?sslmode=require"
+//   (Use the pooled connection string from the Neon dashboard — the direct connection is a paid add-on.)
+// JSON-like fields are stored as String so the schema stays identical across providers.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Switch to "postgresql" when deploying to Neon.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Calendar {
+  id        String   @id @default(cuid())
+  name      String
+  color     String
+  // a short slug used to classify events: "work", "study", "sport", "home", "social", "personal"
+  kind      String   @default("personal")
+  userId    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  events    Event[]
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  title       String
+  location    String?
+  notes       String?
+
+  // timing
+  start       DateTime
+  end         DateTime
+  allDay      Boolean  @default(false)
+  timezone    String?
+
+  // calendar
+  calendarId  String
+  calendar    Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+
+  // intelligence metadata
+  // category: "lecture" | "sport" | "travel" | "sleep" | "work" | "homework" |
+  //           "language" | "coding" | "ppl" | "cubing" | "laundry" | "shopping" |
+  //           "cooking" | "social" | "free" | "other"
+  category    String   @default("other")
+  // flexibility: "fixed" (cannot move/resize/split), "movable" (can move, no split), "flexible" (can move + split)
+  flexibility String   @default("movable")
+  // locationType: "home" | "campus" | "sports" | "out" | "any"
+  locationType String  @default("any")
+  // minimum acceptable chunk length in minutes if this event is split
+  minChunkMins Int    @default(60)
+  // can overlap with other tasks? (e.g. laundry can overlap with work)
+  allowOverlap Boolean @default(false)
+  // priority 0 none, 1 low, 5 medium, 9 high
+  priority    Int      @default(0)
+  // travel time in minutes (displayed as a block before the event)
+  travelMins   Int      @default(0)
+
+  // color override (falls back to calendar.color)
+  color        String?
+
+  // JSON-encoded arrays/objects stored as text (provider-agnostic)
+  // alerts: number[] of minutes-before, e.g. [-30, -10, 0]
+  alerts       String   @default("[]")
+  // recurrence: { freq: "daily"|"weekly"|"monthly"|"yearly", interval: number, until?: ISO, daysOfWeek?: number[] } | null
+  recurrence   String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([calendarId])
+  @@index([start])
+}
