@@ -71,6 +71,7 @@ import {
   useUpdateEvent,
   useSuggest,
 } from "@/hooks/use-calendar-data";
+import { useSettings } from "@/lib/settings-store";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -99,12 +100,12 @@ const COLOR_SWATCHES = [
 
 const ALERT_PRESETS: { label: string; value: number }[] = [
   { label: "At start", value: 0 },
-  { label: "5 min", value: 5 },
-  { label: "10 min", value: 10 },
-  { label: "15 min", value: 15 },
-  { label: "30 min", value: 30 },
-  { label: "1 hour", value: 60 },
-  { label: "1 day", value: 60 * 24 },
+  { label: "5 min", value: -5 },
+  { label: "10 min", value: -10 },
+  { label: "15 min", value: -15 },
+  { label: "30 min", value: -30 },
+  { label: "1 hour", value: -60 },
+  { label: "1 day", value: -60 * 24 },
 ];
 
 const RECURRENCE_FREQS = [
@@ -227,6 +228,7 @@ function EditForm({
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
     []
   );
+  const settingsAlerts = useSettings((s) => s.defaultAlerts);
 
   // Initialise from `state` synchronously (lazy useState initializers).
   const initial = useMemo(() => {
@@ -241,7 +243,7 @@ function EditForm({
         color: e.color ?? null,
         location: e.location ?? "",
         travelMins: e.travelMins ?? 0,
-        alerts: e.alerts?.length ? e.alerts : [30, 10, 0],
+        alerts: e.alerts?.length ? e.alerts : settingsAlerts,
         freq: e.recurrence ? e.recurrence.freq : "none",
         interval: e.recurrence ? e.recurrence.interval : 1,
         until: e.recurrence?.until ?? null,
@@ -267,7 +269,7 @@ function EditForm({
       color: null,
       location: "",
       travelMins: 0,
-      alerts: [30, 10, 0],
+      alerts: settingsAlerts,
       freq: "none",
       interval: 1,
       until: null,
@@ -477,11 +479,12 @@ function EditForm({
   };
   const addCustomAlert = () => {
     const n = Number(customAlert);
-    if (!Number.isFinite(n) || n < 0) {
+    if (!Number.isFinite(n) || n <= 0) {
       toast.error("Enter a valid number of minutes.");
       return;
     }
-    toggleAlert(n);
+    // Store as negative (minutes-before start) to match the notifications engine.
+    toggleAlert(-n);
     setCustomAlert("");
   };
 

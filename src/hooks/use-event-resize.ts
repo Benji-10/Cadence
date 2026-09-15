@@ -16,6 +16,7 @@ export interface ResizePreview {
 export interface UseEventResizeOptions {
   onResize: (event: CalendarEvent, newStart: string, newEnd: string) => void;
   minMins?: number; // default 15
+  snapMins?: number; // default 15
 }
 
 // Resize from top or bottom handle. Snaps to 15min. Enforces min duration.
@@ -33,7 +34,8 @@ export function useEventResize(opts: UseEventResizeOptions) {
 
       const onMove = (e: PointerEvent) => {
         const deltaY = e.clientY - clientY;
-        const deltaMins = Math.round((deltaY / HOUR_HEIGHT) * 60 / 15) * 15;
+        const snap = optsRef.current.snapMins ?? 15;
+        const deltaMins = Math.round((deltaY / HOUR_HEIGHT) * 60 / snap) * snap;
         const startMs = parseISO(event.start).getTime();
         const endMs = parseISO(event.end).getTime();
         const minMs = minMins * 60_000;

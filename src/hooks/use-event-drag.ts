@@ -15,6 +15,8 @@ export interface DragPreview {
 export interface UseEventDragOptions {
   onMove: (event: CalendarEvent, newStart: string, newEnd: string) => void;
   onBlocked: (event: CalendarEvent) => void;
+  // Snap increment in minutes (default 15).
+  snapMins?: number;
   // Optional: given the current pointer position (clientX/clientY) and the
   // Y where the drag began, compute the new start/end datetimes. When
   // provided this enables cross-day dragging (the resolver can map clientX to
@@ -65,7 +67,8 @@ export function useEventDrag(opts: UseEventDragOptions) {
         }
         if (!next) {
           // Vertical/time-only fallback (same-day).
-          const deltaMins = Math.round((deltaY / HOUR_HEIGHT) * 60 / 15) * 15;
+          const snap = optsRef.current.snapMins ?? 15;
+          const deltaMins = Math.round((deltaY / HOUR_HEIGHT) * 60 / snap) * snap;
           const startMs = parseISO(event.start).getTime();
           const durMs = parseISO(event.end).getTime() - parseISO(event.start).getTime();
           const newStartMs = startMs + deltaMins * 60_000;

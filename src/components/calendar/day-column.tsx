@@ -9,6 +9,7 @@ import { NowLine } from "./now-line";
 import { useEventDrag } from "@/hooks/use-event-drag";
 import { useEventResize } from "@/hooks/use-event-resize";
 import { useCreateDrag } from "@/hooks/use-create-drag";
+import { useSettings } from "@/lib/settings-store";
 import { cn } from "@/lib/utils";
 
 interface DayColumnProps {
@@ -54,18 +55,26 @@ export function DayColumn({
   sharedDrag,
 }: DayColumnProps) {
   const positioned = useMemo(() => layoutEvents(events), [events]);
-  const conflictIds = useMemo(() => conflictingEventIds(events), [events]);
+  const showConflicts = useSettings((s) => s.showConflictBadges);
+  const conflictIds = useMemo(
+    () => (showConflicts ? conflictingEventIds(events) : new Set<string>()),
+    [events, showConflicts]
+  );
 
   // Fall back to a local drag when no shared instance is supplied (DayView).
+  // Reads the snap increment from the settings store.
+  const snapMins = useSettings((s) => s.snapMins);
   const localDrag = useEventDrag({
     onMove: (event, newStart, newEnd) => onMoveEvent?.(event, newStart, newEnd),
     onBlocked: (event) => onBlockedMove?.(event),
+    snapMins,
   });
   const drag = sharedDrag ?? localDrag;
 
   const resize = useEventResize({
     onResize: (event, newStart, newEnd) =>
       onResizeEvent?.(event, newStart, newEnd),
+    snapMins,
   });
 
   // Drag-to-create in empty column space.

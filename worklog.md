@@ -325,3 +325,35 @@ TECHNICAL:
 - Settings don't yet drive `snapMinutes` / `weekStartsOn` / `defaultAlerts` into the actual drag/resize/week-start/create code paths — the values are stored and the UI reflects them, but the downstream wiring is partial (defaultCalendarId + defaultEventDurationMins + autoScrollToNow are wired; the rest are stored for future use). Next round should wire the remaining settings.
 - The free-slot finder uses the visible range only; a "next 7 days" option could be useful regardless of current view.
 - Next rounds: wire remaining settings (snap, week-start, default-alerts on create), split persistence, auth, occurrence exceptions.
+
+---
+Task ID: 12 (15-min webDevReview round 8)
+Agent: main (webDevReview)
+Task: QA pass + wire remaining settings (snap, week-start, default-alerts, conflict toggle) + fix alert sign bug.
+
+## Current project status / assessment
+- App stable entering this round. agent-browser QA cycled Day/Week/Month/List with zero runtime/console errors.
+- This round completed the "wire remaining settings" priority from round 7, and fixed a pre-existing alert-sign bug where user-created events stored positive alert offsets (firing AFTER start) instead of negative (minutes-before).
+
+## Completed modifications / verification results
+BUG FIX:
+- Alert sign bug: the edit sheet's ALERT_PRESETS used positive values (5, 10, 15, 30, 60) but the notifications engine interprets `offset * 60_000` added to startMs — positive offsets fire AFTER the event starts, not before. Fixed: all preset values are now negative (-5, -10, -15, -30, -60, -1440); the custom-alert input now negates the user's positive entry (`toggleAlert(-n)`); and the hardcoded `[30, 10, 0]` defaults are replaced with the settings store's `defaultAlerts` (which already uses negative values `[-30, -10, 0]`). Seeded events already had correct negative alerts; only user-created events were affected.
+
+SETTINGS WIRING:
+1. `snapMinutes` → drag + resize. Added `snapMins?` option to `useEventDrag` and `useEventResize`; DayColumn reads `useSettings((s) => s.snapMins)` and passes it to both hooks (local drag + resize); WeekView's cross-day resolver reads the same setting and passes it to `snapMins(y, snapSetting)` (the calendar-ui helper accepts a step param). Now dragging/resizing snaps to 15/30/60 min based on the user's preference.
+2. `weekStartsOn` → date math. Replaced the scheduler's hardcoded Monday-only `startOfWeekMonday` with date-fns' `startOfWeek(date, { weekStartsOn })` throughout calendar-app (state init, handleToday, handlePickDay, handleJumpToEvent, month-view range computation). The `weekStartsOn` value (0=Sunday, 1=Monday) comes from the settings store. Removed the now-unused scheduler import.
+3. `defaultAlerts` → new-event creation. The edit sheet now reads `useSettings((s) => s.defaultAlerts)` and uses it as the initial alerts for new events (and as the fallback for edited events with no alerts).
+4. `showConflictBadges` → conflict highlighting. DayColumn reads `useSettings((s) => s.showConflictBadges)` and skips `conflictingEventIds` computation when disabled (returns empty Set). The agenda view's conflict detection still runs regardless (it's a banner, not a per-event badge) — could be gated too in a future round.
+
+TECHNICAL:
+- Moved `const settings = useSettings()` to the top of CalendarApp (before state that depends on `weekStartsOn`) to fix a "used before declaration" runtime error caught during dev.
+- All settings are now fully wired end-to-end: stored → UI → actual behavior.
+- `bun run lint` clean. No runtime errors across all 4 views.
+
+## Unresolved issues / risks + next-phase recommendations
+- Split persistence: bumped tasks that don't fit one slot still persist only the first chunk. Still open (long-standing).
+- Netlify Identity auth gating: still widget-only. Still open (long-standing).
+- Occurrence-exception editing for recurring events: still edits the parent. Still open.
+- The `showConflictBadges` setting only gates DayColumn conflict badges; the agenda conflict banner always shows. Could be unified.
+- No multi-day event spanning in week view (timed multi-day events only render on their start day).
+- Next rounds: split persistence, auth, occurrence exceptions, multi-day spanning, agenda conflict toggle.

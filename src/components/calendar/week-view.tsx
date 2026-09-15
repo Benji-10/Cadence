@@ -7,6 +7,7 @@ import { DayColumn } from "./day-column";
 import { TimeAxis } from "./time-axis";
 import { HOUR_HEIGHT, snapMins } from "@/lib/calendar-ui";
 import { useEventDrag } from "@/hooks/use-event-drag";
+import { useSettings } from "@/lib/settings-store";
 import { cn } from "@/lib/utils";
 
 interface WeekViewProps {
@@ -53,9 +54,11 @@ export function WeekView({
   // Shared drag instance lifted to the week level so the pointer's X can
   // determine the target day (cross-day drag). The resolver maps client
   // coordinates → a concrete start/end datetime within the 7-day grid.
+  const snapSetting = useSettings((s) => s.snapMins);
   const drag = useEventDrag({
     onMove: (event, newStart, newEnd) => onMoveEvent?.(event, newStart, newEnd),
     onBlocked: (event) => onBlockedMove?.(event),
+    snapMins: snapSetting,
     resolveNewTimes: (event, clientX, _originY, clientY) => {
       const el = columnsRef.current;
       if (!el) return null;
@@ -64,7 +67,7 @@ export function WeekView({
       let colIdx = Math.floor((clientX - rect.left) / colWidth);
       colIdx = Math.max(0, Math.min(6, colIdx));
       const yInCol = clientY - rect.top;
-      let mins = snapMins((yInCol / HOUR_HEIGHT) * 60);
+      let mins = snapMins((yInCol / HOUR_HEIGHT) * 60, snapSetting);
       mins = Math.max(0, Math.min(23 * 60 + 45, mins));
       const targetDay = days[colIdx];
       const start = new Date(targetDay);

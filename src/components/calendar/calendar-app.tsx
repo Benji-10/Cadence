@@ -27,7 +27,6 @@ import {
 import { notifications } from "@/lib/notifications";
 import { validateWindow, expandAllRecurrence } from "@/lib/scheduler";
 import { useSettings } from "@/lib/settings-store";
-import { startOfWeek as startOfWeekMonday } from "@/lib/scheduler/time";
 import { Toolbar } from "./toolbar";
 import { WeekView } from "./week-view";
 import { DayView } from "./day-view";
@@ -51,10 +50,14 @@ import { HOUR_HEIGHT } from "@/lib/calendar-ui";
 type View = "day" | "week" | "month" | "agenda";
 
 export function CalendarApp() {
+  // Settings (must be before state that depends on it).
+  const settings = useSettings();
+  const weekStartsOn = settings.weekStartsOn;
+
   // View state
   const [view, setView] = useState<View>("week");
   const [weekStart, setWeekStart] = useState<Date>(() =>
-    new Date(startOfWeekMonday(new Date().toISOString()))
+    startOfWeek(new Date(), { weekStartsOn: weekStartsOn as 0 | 1 })
   );
   const [selectedDay, setSelectedDay] = useState<Date>(() =>
     startOfDay(new Date())
@@ -68,7 +71,6 @@ export function CalendarApp() {
   const [importOpen, setImportOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [freeSlotOpen, setFreeSlotOpen] = useState(false);
-  const settings = useSettings();
 
   // Edit sheet + reorder preview
   const [editState, setEditState] = useState<EditSheetState | null>(null);
@@ -100,8 +102,8 @@ export function CalendarApp() {
   const range = useMemo(() => {
     if (view === "month") {
       const mStart = startOfMonth(monthDate);
-      const from = startOfWeek(mStart, { weekStartsOn: 1 });
-      const to = endOfWeek(endOfMonth(monthDate), { weekStartsOn: 1 });
+      const from = startOfWeek(mStart, { weekStartsOn: weekStartsOn as 0 | 1 });
+      const to = endOfWeek(endOfMonth(monthDate), { weekStartsOn: weekStartsOn as 0 | 1 });
       return { from: from.toISOString(), to: addDays(to, 1).toISOString() };
     }
     const from = weekStart.toISOString();
@@ -228,7 +230,7 @@ export function CalendarApp() {
   };
   const handleToday = () => {
     const now = new Date();
-    setWeekStart(new Date(startOfWeekMonday(now.toISOString())));
+    setWeekStart(startOfWeek(now, { weekStartsOn: weekStartsOn as 0 | 1 }));
     setSelectedDay(startOfDay(now));
     setMonthDate(startOfMonth(now));
   };
@@ -246,7 +248,7 @@ export function CalendarApp() {
   // Pick a day from the month grid → drill into Day view on that date.
   const handlePickDay = (day: Date) => {
     setSelectedDay(startOfDay(day));
-    setWeekStart(new Date(startOfWeekMonday(day.toISOString())));
+    setWeekStart(startOfWeek(day, { weekStartsOn: weekStartsOn as 0 | 1 }));
     setView("day");
   };
 
@@ -341,7 +343,7 @@ export function CalendarApp() {
   const handleJumpToEvent = useCallback((event: CalendarEvent) => {
     const start = parseISO(event.start);
     setSelectedDay(startOfDay(start));
-    setWeekStart(new Date(startOfWeekMonday(start.toISOString())));
+    setWeekStart(startOfWeek(start, { weekStartsOn: weekStartsOn as 0 | 1 }));
     setMonthDate(startOfMonth(start));
     setView("day");
     setEditState({ mode: "edit", event });
