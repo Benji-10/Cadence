@@ -72,6 +72,8 @@ import {
   useSuggest,
 } from "@/hooks/use-calendar-data";
 import { useSettings } from "@/lib/settings-store";
+import { useTemplates } from "@/lib/templates-store";
+import { TemplatesBar } from "./templates-bar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -229,6 +231,7 @@ function EditForm({
     []
   );
   const settingsAlerts = useSettings((s) => s.defaultAlerts);
+  const addTemplate = useTemplates((s) => s.addTemplate);
 
   // Initialise from `state` synchronously (lazy useState initializers).
   const initial = useMemo(() => {
@@ -441,6 +444,54 @@ function EditForm({
     } catch (e) {
       toast.error("Couldn't duplicate", { description: String(e) });
     }
+  };
+
+  // Save the current event's title/duration/calendar/location as a reusable
+  // quick-add template.
+  const handleSaveAsTemplate = () => {
+    if (!title.trim()) {
+      toast.error("Type a title first.");
+      return;
+    }
+    const dur = Math.max(
+      15,
+      Math.round(
+        (parseISO(end).getTime() - parseISO(start).getTime()) / 60000
+      )
+    );
+    addTemplate({
+      title: title.trim(),
+      durationMins: dur,
+      calendarId,
+      location: location || undefined,
+      color,
+      category: inferred.category,
+      flexibility: inferred.flexibility,
+      locationType: inferred.locationType,
+    });
+    toast.success(`Saved "${title.trim()}" as a template.`);
+  };
+
+  // Apply a template's fields to the current form.
+  const applyTemplate = (t: {
+    title: string;
+    durationMins: number;
+    calendarId?: string;
+    location?: string;
+    color?: string | null;
+    category?: string;
+    flexibility?: string;
+    locationType?: string;
+  }) => {
+    setTitle(t.title);
+    if (t.location !== undefined) setLocation(t.location);
+    if (t.calendarId) setCalendarId(t.calendarId);
+    if (t.color !== undefined) setColor(t.color);
+    // Re-derive start/end: keep the current start, adjust end to the template duration.
+    const startMs = parseISO(start).getTime();
+    const newEnd = new Date(startMs + t.durationMins * 60000).toISOString();
+    setEnd(newEnd);
+    toast.success(`Applied "${t.title}" template.`);
   };
 
   const handleFindBestSlot = async () => {
@@ -953,6 +1004,25 @@ function EditForm({
             <Sparkles className="size-3.5" />
             {suggestMut.isPending ? "Finding…" : "Find best slot"}
           </Button>
+        )}
+
+        {/* Quick-add templates (create mode only) */}
+        {state?.mode === "create" && (
+          <div className="mt-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[11px] font-medium text-muted-foreground">
+                Quick add
+              </span>
+              <button
+                onClick={handleSaveAsTemplate}
+                className="text-[11px] font-medium text-emerald-600 hover:underline dark:text-emerald-400"
+                disabled={!title.trim()}
+              >
+                + Save current as template
+              </button>
+            </div>
+            <TemplatesBar onApply={applyTemplate} />
+          </div>
         )}
       </div>
 

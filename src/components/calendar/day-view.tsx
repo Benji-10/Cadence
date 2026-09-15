@@ -61,6 +61,23 @@ export function DayView({
       ),
     [events, day, hiddenCalendarIds]
   );
+  // Multi-day timed events that started on a PREVIOUS day and continue onto
+  // this day (shown in a "continues from yesterday" header strip).
+  const continuations = useMemo(
+    () =>
+      events.filter((e) => {
+        if (e.allDay) return false;
+        if (hiddenCalendarIds.has(e.calendarId)) return false;
+        const s = parseISO(e.start);
+        const e2 = parseISO(e.end);
+        if (isSameDay(s, e2)) return false; // single-day
+        const dayStartMs = day.getTime();
+        const dayEndMs = dayStartMs + 24 * 60 * 60 * 1000;
+        // spans this day AND started before this day
+        return s.getTime() < dayEndMs && e2.getTime() > dayStartMs && !isSameDay(s, day);
+      }),
+    [events, day, hiddenCalendarIds]
+  );
   const dayEvents = events.filter(
     (e) =>
       !e.allDay &&
@@ -132,6 +149,44 @@ export function DayView({
                   style={{ backgroundColor: color }}
                 >
                   {ev.title}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Continues-from-yesterday strip (multi-day timed events) */}
+      {continuations.length > 0 && (
+        <div className="flex border-b border-border bg-muted/20">
+          <div className="flex w-14 shrink-0 items-center justify-end border-r border-border px-1.5">
+            <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+              cont.
+            </span>
+          </div>
+          <div className="flex flex-1 flex-wrap gap-1 p-1">
+            {continuations.map((ev) => {
+              const cal = calendarsById[ev.calendarId];
+              const color = ev.color ?? cal?.color ?? "#64748B";
+              const start = parseISO(ev.start);
+              const end = parseISO(ev.end);
+              const endsHere = isSameDay(end, day);
+              return (
+                <button
+                  key={ev.id}
+                  onClick={() => onSelect?.(ev)}
+                  className="flex items-center gap-1.5 truncate rounded px-2 py-0.5 text-left text-[11px] font-medium text-white transition-filter hover:brightness-110"
+                  style={{ backgroundColor: color }}
+                  title={`${ev.title} — started ${format(start, "EEE d MMM, HH:mm")}${endsHere ? `, ends ${format(end, "HH:mm")}` : ""}`}
+                >
+                  <span className="opacity-80">↳</span>
+                  <span className="truncate">{ev.title}</span>
+                  <span className="opacity-70">
+                    from {format(start, "EEE HH:mm")}
+                  </span>
+                  {endsHere && (
+                    <span className="opacity-90">→ {format(end, "HH:mm")}</span>
+                  )}
                 </button>
               );
             })}

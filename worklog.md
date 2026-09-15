@@ -390,3 +390,35 @@ TECHNICAL:
 - Continuation bars are week-view only; DayView could show a "continues from yesterday" header too.
 - The continuation bar doesn't show the START time on the first day's bar (only the end time on the last day) — could be added.
 - Next rounds: split persistence, auth, occurrence exceptions, day-view continuation header.
+
+---
+Task ID: 14 (15-min webDevReview round 10)
+Agent: main (webDevReview)
+Task: QA pass + day-view continuation header + event templates (quick-add presets).
+
+## Current project status / assessment
+- App stable entering this round. agent-browser QA cycled Day/Week/Month/List with zero runtime/console errors.
+- This round closed the day-view continuation gap and added a user-facing quick-add templates feature.
+
+## Completed modifications / verification results
+NEW FEATURES:
+1. Day-view "continues from yesterday" header (`src/components/calendar/day-view.tsx`). A `continuations` memo finds multi-day TIMED events that started on a previous day and continue onto the viewed day. Rendered as a strip below the all-day strip with a "CONT." label and colored chips: "↳ {title} from {start-day HH:mm}" (+ "→ {end HH:mm}" if it ends on this day). Clicking a chip opens the edit sheet. VERIFIED: created a "Hackathon" event Tue 20:00 → Wed 08:00 → Day view of Wednesday showed "CONT." strip with "↳ Hackathon from Tue 20:00".
+2. Event templates / quick-add presets (`src/lib/templates-store.ts` + `src/components/calendar/templates-bar.tsx`). A zustand+persist store holds user-defined templates (title, duration, calendarId, location, color, category metadata). The TemplatesBar renders in the create-mode edit sheet as a row of chips. A "+ Save current as template" link captures the current event's fields into a new template. Clicking a chip applies its fields to the form (title, location, calendar, color, and end-time derived from the template duration + current start). Each chip has a hover-revealed remove (X) button. VERIFIED: typed "Gym session", saved as template → chip appeared; cleared title; clicked the chip → title restored to "Gym session" with toast "Applied 'Gym session' template".
+
+STYLING POLISH:
+- Day-view continuation strip mirrors the all-day strip's `bg-muted/20` styling with a "CONT." label column.
+- Template chips: rounded-full pills with a calendar-color dot, title, and a hover-revealed destructive X button. Empty state shows a dashed border hint with a Zap icon.
+- The "+ Save current as template" link uses emerald accent and disables when the title is empty.
+
+TECHNICAL:
+- The templates store is client-side persisted (localStorage key `cadence-templates`); no schema/API changes needed.
+- `applyTemplate` keeps the current start time and adjusts only the end based on the template duration — so a template is duration-aware, not time-of-day-aware.
+- `bun run lint` clean. No runtime errors across all 4 views.
+
+## Unresolved issues / risks + next-phase recommendations
+- Split persistence: bumped tasks that don't fit one slot still persist only the first chunk. Still open (long-standing).
+- Netlify Identity auth gating: still widget-only. Still open (long-standing).
+- Occurrence-exception editing for recurring events: still edits the parent. Still open.
+- Templates don't yet capture alerts/priority/recurrence — only core scheduling fields. Could be extended.
+- No template management UI outside the create sheet (can't reorder, edit, or export templates).
+- Next rounds: split persistence, auth, occurrence exceptions, template management panel, template alert/priority capture.
