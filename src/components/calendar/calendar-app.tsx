@@ -41,6 +41,7 @@ import { InsightsDialog } from "./insights-dialog";
 import { ImportDialog } from "./import-dialog";
 import { SettingsDialog } from "./settings-dialog";
 import { FreeSlotDialog } from "./free-slot-dialog";
+import { YearView } from "./year-view";
 import {
   CalendarVisibilityContext,
   type VisibilityCtx,
@@ -49,7 +50,7 @@ import { HOUR_HEIGHT, splitOvernightEvents } from "@/lib/calendar-ui";
 import { useUndo } from "@/lib/undo-store";
 import { api } from "@/lib/api-client";
 
-type View = "day" | "week" | "month" | "agenda";
+type View = "day" | "week" | "month" | "year" | "agenda";
 
 export function CalendarApp() {
   // Settings (must be before state that depends on it).
@@ -58,7 +59,10 @@ export function CalendarApp() {
   const undoStack = useUndo();
 
   // View state
-  const [view, setView] = useState<View>("week");
+  // Mobile defaults to Day view (iOS shows one day at a time on phone).
+  const [view, setView] = useState<View>(() =>
+    typeof window !== "undefined" && window.innerWidth < 640 ? "day" : "week"
+  );
   const [weekStart, setWeekStart] = useState<Date>(() =>
     startOfWeek(new Date(), { weekStartsOn: weekStartsOn as 0 | 1 })
   );
@@ -68,6 +72,7 @@ export function CalendarApp() {
   const [monthDate, setMonthDate] = useState<Date>(() =>
     startOfMonth(new Date())
   );
+  const [yearDate, setYearDate] = useState<Date>(() => new Date());
   const [searchOpen, setSearchOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [insightsOpen, setInsightsOpen] = useState(false);
@@ -103,6 +108,11 @@ export function CalendarApp() {
   // Visible range. Week/day views fetch the current week; month view fetches
   // the whole month grid (with leading/trailing days) so its cells are populated.
   const range = useMemo(() => {
+    if (view === "year") {
+      const from = new Date(yearDate.getFullYear(), 0, 1);
+      const to = new Date(yearDate.getFullYear() + 1, 0, 1);
+      return { from: from.toISOString(), to: to.toISOString() };
+    }
     if (view === "month") {
       const mStart = startOfMonth(monthDate);
       const from = startOfWeek(mStart, { weekStartsOn: weekStartsOn as 0 | 1 });
@@ -112,7 +122,7 @@ export function CalendarApp() {
     const from = weekStart.toISOString();
     const to = addWeeks(weekStart, 1).toISOString();
     return { from, to };
-  }, [view, weekStart, monthDate]);
+  }, [view, weekStart, monthDate, yearDate]);
 
   const eventsQ = useEvents(range);
   const rawEvents: CalendarEvent[] = eventsQ.data?.events ?? [];
@@ -226,11 +236,13 @@ export function CalendarApp() {
   const handlePrev = () => {
     if (view === "week") setWeekStart((d) => addWeeks(d, -1));
     else if (view === "month") setMonthDate((d) => addMonths(d, -1));
+    else if (view === "year") setYearDate((d) => new Date(d.getFullYear() - 1, 0, 1));
     else setSelectedDay((d) => addDays(d, -1));
   };
   const handleNext = () => {
     if (view === "week") setWeekStart((d) => addWeeks(d, 1));
     else if (view === "month") setMonthDate((d) => addMonths(d, 1));
+    else if (view === "year") setYearDate((d) => new Date(d.getFullYear() + 1, 0, 1));
     else setSelectedDay((d) => addDays(d, 1));
   };
   const handleToday = () => {
@@ -238,6 +250,7 @@ export function CalendarApp() {
     setWeekStart(startOfWeek(now, { weekStartsOn: weekStartsOn as 0 | 1 }));
     setSelectedDay(startOfDay(now));
     setMonthDate(startOfMonth(now));
+    setYearDate(now);
   };
 
   const handleViewChange = (v: View) => {
@@ -248,6 +261,7 @@ export function CalendarApp() {
       if (!inWeek) setSelectedDay(startOfDay(new Date()));
     }
     if (v === "month") setMonthDate(startOfMonth(selectedDay));
+    if (v === "year") setYearDate(selectedDay);
   };
 
   // Pick a day from the month grid → drill into Day view on that date.
@@ -255,6 +269,24 @@ export function CalendarApp() {
     setSelectedDay(startOfDay(day));
     setWeekStart(startOfWeek(day, { weekStartsOn: weekStartsOn as 0 | 1 }));
     setView("day");
+  };
+
+  // Pick a month from the year grid → drill into Month view.
+  const handlePickMonth = (monthDate: Date) => {
+    setMonthDate(monthDate);
+    setView("month");
+  };
+
+  // Click the month/year label in the toolbar to zoom out one level:
+  // Day → Month, Month → Year.
+  const handleLabelClick = () => {
+    if (view === "day" || view === "week") {
+      setMonthDate(startOfMonth(selectedDay));
+      setView("month");
+    } else if (view === "month") {
+      setYearDate(monthDate);
+      setView("year");
+    }
   };
 
   const handleReseed = async () => {
@@ -471,6 +503,9 @@ export function CalendarApp() {
         case "m":
           setView("month");
           break;
+        case "y":
+          setView("year");
+          break;
         case "a":
           setView("agenda");
           break;
@@ -600,6 +635,8 @@ export function CalendarApp() {
       ? weekStart
       : view === "month"
       ? monthDate
+      : view === "year"
+      ? yearDate
       : selectedDay;
 
   return (
@@ -624,6 +661,7 @@ export function CalendarApp() {
           onOpenFreeSlot={() => setFreeSlotOpen(true)}
           onUndo={handleUndo}
           canUndo={undoStack.stack.length > 0}
+          onLabelClick={handleLabelClick}
         />
 
         <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -662,6 +700,12 @@ export function CalendarApp() {
               onCreate={handleCreate}
               onPickDay={handlePickDay}
               defaultCalendarId={defaultCalendarId}
+            />
+          ) : view === "year" ? (
+            <YearView
+              yearDate={yearDate}
+              events={events}
+              onSelectMonth={handlePickMonth}
             />
           ) : view === "agenda" ? (
             <AgendaView
@@ -716,6 +760,8 @@ export function CalendarApp() {
                 ? `Week of ${format(weekStart, "d MMM")}`
                 : view === "month"
                 ? format(monthDate, "MMMM yyyy")
+                : view === "year"
+                ? format(yearDate, "yyyy")
                 : view === "agenda"
                 ? `Agenda · ${format(weekStart, "d MMM")}`
                 : format(selectedDay, "EEE d MMM")}

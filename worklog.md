@@ -488,3 +488,32 @@ TECHNICAL:
 - Real-time auto-adjust during drag (bumped blocks moving as you drag, before drop) is not implemented — the drag preview moves the dragged block in real-time, but bumped tasks only adjust on drop. Implementing live reorder during drag would require running the scheduler on every pointermove (expensive). Flag for future round with throttling.
 - Undo doesn't yet cover create/delete (only move/resize). Adding `createdIds` / `deleted` restoration is stubbed in the store but not wired.
 - Next rounds: real-time drag auto-adjust, undo for create/delete, merge-overlapping-events option.
+
+---
+Task ID: 17 (user feedback round 3 — mobile + iOS zoom levels)
+Agent: main
+Task: Make mobile-friendly: default Day view, clickable label zoom (Day→Month→Year), add Year view.
+
+## Current project status / assessment
+- App stable. This round delivered the iOS-style zoom hierarchy (Day → Month → Year) and fixed the mobile default + toolbar overflow.
+
+## Completed modifications / verification results
+1. **Year view** (`src/components/calendar/year-view.tsx`). A 12-mini-month grid showing the whole year. Each mini-month has weekday headers + day numbers + event dots. Clicking any month drills into Month view. Year navigation via prev/next chevrons. Responsive grid: 1 column on mobile, 2 on sm, 3 on lg. VERIFIED: clicking Year showed all 12 months (January–December) with event dots; clicking September drilled into Month view.
+
+2. **Clickable label zoom** (toolbar + calendar-app `handleLabelClick`). The date label in the toolbar is now a button. In Day/Week view it shows the date and clicking it zooms to Month view; in Month view it shows the month and clicking zooms to Year view. This mirrors iOS Calendar exactly. VERIFIED on mobile: Day view label "Sep 15" → tap → Month view (label "Sep 2026") → tap → Year view (label "2026").
+
+3. **Mobile defaults to Day view**. The initial view is now detected: `window.innerWidth < 640` → Day view (iOS shows one day at a time on phone); desktop → Week view. VERIFIED: mobile (375px) opened in Day view showing "TUESDAY".
+
+4. **Mobile toolbar optimization**. The 5-segment toggle (Day/Week/Month/Year/List) was too wide for 375px. Fixed: Year and List segments are hidden on mobile (`hidden sm:block`) — accessible via the clickable label zoom (Year) and the More menu (List). The "Today" button shows "Now" on mobile. Chevron icons shrunk to size-3.5. Undo button hidden on mobile (in More menu). Result: `scrollWidth === clientWidth === 375` (zero overflow).
+
+TECHNICAL:
+- `yearDate` state added; range computation fetches the full year (Jan 1 → Jan 1 next year) when in Year view.
+- `handlePickMonth` drills Year → Month; `handleLabelClick` handles Day→Month and Month→Year zoom.
+- `y` keyboard shortcut added for Year view; shortcuts dialog updated.
+- Footer label shows "yyyy" in Year view.
+- `bun run lint` clean. No runtime errors across all 5 views on both mobile (375px) and desktop (1280px).
+
+## Unresolved issues / risks + next-phase recommendations
+- The mobile Week view still shows all 7 days squished (user's original complaint). The fix was to default to Day view on mobile, but a true iOS-style "week strip + single day" mobile week view is still TODO.
+- Split persistence, auth, occurrence exceptions still open (long-standing).
+- Next rounds: mobile week-strip view, split persistence, auth.

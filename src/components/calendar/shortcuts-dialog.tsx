@@ -29,6 +29,7 @@ const GROUPS: { title: string; items: { keys: string[]; label: string }[] }[] = 
       { keys: ["D"], label: "Day view" },
       { keys: ["W"], label: "Week view" },
       { keys: ["M"], label: "Month view" },
+      { keys: ["Y"], label: "Year view" },
       { keys: ["A"], label: "Agenda / list view" },
     ],
   },

@@ -42,8 +42,8 @@ import { cn } from "@/lib/utils";
 
 interface ToolbarProps {
   visibleDate: Date;
-  view: "day" | "week" | "month" | "agenda";
-  onViewChange: (v: "day" | "week" | "month" | "agenda") => void;
+  view: "day" | "week" | "month" | "year" | "agenda";
+  onViewChange: (v: "day" | "week" | "month" | "year" | "agenda") => void;
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
@@ -59,6 +59,7 @@ interface ToolbarProps {
   onOpenFreeSlot: () => void;
   onUndo: () => void;
   canUndo: boolean;
+  onLabelClick: () => void;
 }
 
 export function Toolbar({
@@ -80,6 +81,7 @@ export function Toolbar({
   onOpenFreeSlot,
   onUndo,
   canUndo,
+  onLabelClick,
 }: ToolbarProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const [calendarsOpen, setCalendarsOpen] = useState(false);
@@ -103,36 +105,49 @@ export function Toolbar({
 
         {/* Center navigation */}
         <div className="mx-auto flex items-center gap-0.5 sm:gap-2">
-          <Button variant="ghost" size="icon" onClick={onPrev} aria-label="Previous" className="size-8">
-            <ChevronLeft className="size-4" />
+          <Button variant="ghost" size="icon" onClick={onPrev} aria-label="Previous" className="size-7">
+            <ChevronLeft className="size-3.5" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={onToday} className="px-2 text-xs sm:px-3">
-            Today
+          <Button variant="ghost" size="sm" onClick={onToday} className="px-1.5 text-[11px] sm:px-3 sm:text-sm">
+            <span className="sm:hidden">Now</span>
+            <span className="hidden sm:inline">Today</span>
           </Button>
-          <Button variant="ghost" size="icon" onClick={onNext} aria-label="Next" className="size-8">
-            <ChevronRight className="size-4" />
+          <Button variant="ghost" size="icon" onClick={onNext} aria-label="Next" className="size-7">
+            <ChevronRight className="size-3.5" />
           </Button>
-          {/* Full date label — desktop only */}
-          <div className="ml-1 hidden min-w-[140px] text-center text-sm font-semibold sm:min-w-[200px] sm:text-base md:block">
+          {/* Full date label — desktop only. Clickable to zoom out (Day→Month→Year). */}
+          <button
+            onClick={onLabelClick}
+            className="ml-1 hidden min-w-[140px] cursor-pointer rounded-md px-2 py-1 text-center text-sm font-semibold transition-colors hover:bg-accent sm:min-w-[200px] sm:text-base md:block"
+            title="Click to zoom out"
+          >
             {view === "week"
               ? format(visibleDate, "MMM yyyy")
               : view === "month"
               ? format(visibleDate, "MMMM yyyy")
+              : view === "year"
+              ? format(visibleDate, "yyyy")
               : format(visibleDate, "MMM d, yyyy")}
-          </div>
-          {/* Compact label for small screens */}
-          <div className="ml-1 hidden min-w-[80px] text-center text-xs font-semibold sm:hidden">
+          </button>
+          {/* Compact label for small screens — also clickable. Hidden on md+. */}
+          <button
+            onClick={onLabelClick}
+            className="ml-1 min-w-[70px] cursor-pointer rounded-md px-1 py-0.5 text-center text-xs font-semibold transition-colors hover:bg-accent md:hidden"
+            title="Tap to zoom out"
+          >
             {view === "week"
               ? format(visibleDate, "MMM yyyy")
               : view === "month"
               ? format(visibleDate, "MMM yyyy")
+              : view === "year"
+              ? format(visibleDate, "yyyy")
               : format(visibleDate, "MMM d")}
-          </div>
+          </button>
         </div>
 
         {/* Right actions */}
         <div className="flex items-center gap-1 sm:gap-2">
-          {/* Undo */}
+          {/* Undo — hidden on mobile (use ⌘Z or More menu) */}
           <Button
             variant="ghost"
             size="icon"
@@ -140,7 +155,7 @@ export function Toolbar({
             aria-label="Undo"
             title="Undo (last action)"
             disabled={!canUndo}
-            className={!canUndo ? "opacity-40" : ""}
+            className={`hidden sm:inline-flex ${!canUndo ? "opacity-40" : ""}`}
           >
             <Undo2 className="size-4" />
           </Button>
@@ -193,7 +208,7 @@ export function Toolbar({
             <Settings className="size-4" />
           </Button>
 
-          {/* Day/Week/Month/List segmented toggle */}
+          {/* Day/Week/Month/Year/List segmented toggle */}
           <div className="flex items-center rounded-md border border-border bg-muted/40 p-0.5">
             <SegBtn active={view === "day"} onClick={() => onViewChange("day")}>
               <span className="sm:hidden">D</span>
@@ -207,9 +222,11 @@ export function Toolbar({
               <span className="sm:hidden">M</span>
               <span className="hidden sm:inline">Month</span>
             </SegBtn>
-            <SegBtn active={view === "agenda"} onClick={() => onViewChange("agenda")}>
-              <span className="sm:hidden">L</span>
-              <span className="hidden sm:inline">List</span>
+            <SegBtn active={view === "year"} onClick={() => onViewChange("year")} className="hidden sm:block">
+              <span>Year</span>
+            </SegBtn>
+            <SegBtn active={view === "agenda"} onClick={() => onViewChange("agenda")} className="hidden sm:block">
+              <span>List</span>
             </SegBtn>
           </div>
 
@@ -278,6 +295,10 @@ export function Toolbar({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {/* Mobile-only quick actions (hidden buttons' equivalents) */}
+              <DropdownMenuItem onClick={onUndo} disabled={!canUndo} className="sm:hidden">
+                <Undo2 className="size-4" />
+                Undo
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={onOpenSearch} className="sm:hidden">
                 <Search className="size-4" />
                 Search events
@@ -336,10 +357,12 @@ function SegBtn({
   active,
   onClick,
   children,
+  className,
 }: {
   active: boolean;
   onClick: () => void;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
     <button
@@ -348,7 +371,8 @@ function SegBtn({
         "rounded-[5px] px-2.5 py-1 text-xs font-medium transition-colors",
         active
           ? "bg-background shadow-sm text-foreground"
-          : "text-muted-foreground hover:text-foreground"
+          : "text-muted-foreground hover:text-foreground",
+        className
       )}
     >
       {children}
