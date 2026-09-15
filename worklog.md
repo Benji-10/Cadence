@@ -613,3 +613,28 @@ VERIFICATION:
 - The WeekView's shared drag also uses the new hook, so cross-day drag requires long-press on touch.
 - Repeating events still edit the parent (occurrence exceptions not yet implemented).
 - Next rounds: real-device testing, occurrence exceptions, split persistence.
+
+---
+Task ID: 21 (user feedback round 7 — create only on long-press)
+Agent: main
+Task: Create-new-event should only trigger on 1s hold, not on swipe/scroll.
+
+## Current project status / assessment
+- App stable. Fixed the remaining touch issue: the dotted create-preview outline was appearing during swipes/scrolls. Now creation only triggers after a 1-second hold on empty space (touch), matching the event-drag long-press model.
+
+## Completed modifications / verification results
+**Create interaction rewritten** (`use-create-drag.ts`):
+- **Touch**: `onPointerDown` starts a 1-second timer but does NOT show the dotted preview. If the finger moves > 8px before 1s (scroll/swipe), the timer is cancelled and no preview appears. Only after 1s of holding does the preview show, and on release the create sheet opens at the held time.
+- **Mouse (desktop)**: unchanged — click on empty space creates a default 1h event; press-and-drag sketches a time range.
+- The `preview` state is now only set for touch AFTER the timer fires (previously it was set immediately on pointerdown, causing the dotted outline during scrolls).
+
+VERIFICATION:
+- Mobile: no dotted outline on load or during scroll (`document.querySelector('[class*=border-dashed]') === null`). ✓
+- Desktop: click on event opens Edit sheet; "New event" button creates. ✓
+- All 5 views cycle cleanly, no errors. ✓
+- `bun run lint` clean. ✓
+
+## Unresolved issues / risks + next-phase recommendations
+- Needs real-device touch testing (agent-browser simulates mouse).
+- Repeating events still edit the parent (occurrence exceptions not yet implemented).
+- Next rounds: real-device testing, occurrence exceptions, split persistence.

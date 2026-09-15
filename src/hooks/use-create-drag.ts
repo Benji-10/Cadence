@@ -14,54 +14,114 @@ interface UseCreateDragOptions {
   rangeFromMins: (startMins: number, endMins: number) => { start: string; end: string };
 }
 
-// Press-and-drag in an empty part of the day column to sketch a new event's
-// time range (iOS-style). A tap (no movement) falls back to a default 1h slot.
+// Touch-first create interaction (mirrors iOS Calendar):
+//   - On TOUCH: a 1s long-press on empty space is required to start creating.
+//     Swipes/scrolls before 1s cancel the timer — no dotted outline appears.
+//     After 1s hold, the create sheet opens at the touched time.
+//   - On MOUSE (desktop): click on empty space creates immediately (default 1h).
+//     Press-and-drag sketches a time range (legacy behavior).
 export function useCreateDrag({ onCreate, rangeFromMins }: UseCreateDragOptions) {
   const optsRef = useRef({ onCreate, rangeFromMins });
   useEffect(() => {
     optsRef.current = { onCreate, rangeFromMins };
   });
   const [preview, setPreview] = useState<CreatePreview | null>(null);
-  const startRef = useRef<{ clientY: number; columnTop: number } | null>(null);
+  const startRef = useRef<{ clientY: number; columnTop: number; isTouch: boolean } | null>(null);
   const movedRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const originRef = useRef<{ x: number; y: number } | null>(null);
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    // Only start create-drag on the empty column itself (event blocks stop
-    // propagation). Ignore right/middle clicks.
     if (e.button !== 0) return;
+    const isTouch = e.pointerType === "touch";
     const rect = e.currentTarget.getBoundingClientRect();
-    startRef.current = { clientY: e.clientY, columnTop: rect.top };
+    startRef.current = { clientY: e.clientY, columnTop: rect.top, isTouch };
     movedRef.current = false;
-    setPreview({ startY: e.clientY - rect.top, endY: e.clientY - rect.top });
+
+    if (isTouch) {
+      // TOUCH: do NOT show the dotted preview yet. Start a 1s timer. Only
+      // after it fires do we activate create mode. If the finger moves
+      // before 1s (scroll/swipe), cancel.
+      originRef.current = { x: e.clientX, y: e.clientY };
+      timerRef.current = setTimeout(() => {
+        // Timer fired → show create preview + open sheet on release.
+        if (startRef.current) {
+          setPreview({
+            startY: startRef.current.clientY - startRef.current.columnTop,
+            endY: startRef.current.clientY - startRef.current.columnTop,
+          });
+        }
+      }, 1000);
+    } else {
+      // MOUSE: show preview immediately (desktop drag-to-create).
+      setPreview({ startY: e.clientY - rect.top, endY: e.clientY - rect.top });
+    }
   }, []);
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
       const start = startRef.current;
       if (!start) return;
+
+      // For touch: cancel the create timer if the finger moves (it's a scroll).
+      if (start.isTouch && timerRef.current && originRef.current) {
+        const dx = Math.abs(e.clientX - originRef.current.x);
+        const dy = Math.abs(e.clientY - originRef.current.y);
+        if (dx > 8 || dy > 8) {
+          clearTimeout(timerRef.current);
+          timerRef.current = null;
+          originRef.current = null;
+          setPreview(null);
+          return;
+        }
+      }
+
       const deltaY = e.clientY - start.clientY;
       if (Math.abs(deltaY) > 4) movedRef.current = true;
-      const endY = Math.max(0, e.clientY - start.columnTop);
-      setPreview((cur) => (cur ? { ...cur, endY } : null));
+      // Only update preview if it's active (mouse always; touch only after timer).
+      if (!start.isTouch || preview) {
+        const endY = Math.max(0, e.clientY - start.columnTop);
+        setPreview((cur) => (cur ? { ...cur, endY } : null));
+      }
     };
     const onUp = (e: PointerEvent) => {
       const start = startRef.current;
       startRef.current = null;
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      originRef.current = null;
+
+      const wasPreview = preview;
       setPreview(null);
       if (!start) return;
-      const y0 = start.clientY - start.columnTop;
-      const y1 = Math.max(0, e.clientY - start.columnTop);
-      const minsA = snapMins((y0 / HOUR_HEIGHT) * 60);
-      const minsB = snapMins((y1 / HOUR_HEIGHT) * 60);
-      if (!movedRef.current) {
-        // pure tap → let the column's onClick handle it (default 1h)
+
+      // Touch: if the timer fired (preview was shown), create at the held time.
+      if (start.isTouch && wasPreview) {
+        const y = start.clientY - start.columnTop;
+        const mins = Math.max(0, Math.min(23 * 60 + 45, snapMins((y / HOUR_HEIGHT) * 60)));
+        const { start: isoStart, end: isoEnd } = optsRef.current.rangeFromMins(mins, mins + 60);
+        optsRef.current.onCreate({ start: isoStart, end: isoEnd });
         return;
       }
-      const lo = Math.max(0, Math.min(minsA, minsB));
-      const hi = Math.max(0, Math.max(minsA, minsB));
-      if (hi - lo < 15) return; // too small, ignore
-      const { start: isoStart, end: isoEnd } = optsRef.current.rangeFromMins(lo, Math.max(hi, lo + 15));
-      optsRef.current.onCreate({ start: isoStart, end: isoEnd });
+
+      // Mouse: tap → default 1h (let onClick handle); drag → sketch range.
+      if (!start.isTouch) {
+        const y0 = start.clientY - start.columnTop;
+        const y1 = Math.max(0, e.clientY - start.columnTop);
+        const minsA = snapMins((y0 / HOUR_HEIGHT) * 60);
+        const minsB = snapMins((y1 / HOUR_HEIGHT) * 60);
+        if (!movedRef.current) {
+          // pure tap → let the column's onClick handle it
+          return;
+        }
+        const lo = Math.max(0, Math.min(minsA, minsB));
+        const hi = Math.max(0, Math.max(minsA, minsB));
+        if (hi - lo < 15) return;
+        const { start: isoStart, end: isoEnd } = optsRef.current.rangeFromMins(lo, Math.max(hi, lo + 15));
+        optsRef.current.onCreate({ start: isoStart, end: isoEnd });
+      }
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -69,7 +129,7 @@ export function useCreateDrag({ onCreate, rangeFromMins }: UseCreateDragOptions)
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
-  }, []);
+  }, [preview]);
 
   const consumeMoved = useCallback(() => {
     const was = movedRef.current;
