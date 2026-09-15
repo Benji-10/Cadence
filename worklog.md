@@ -151,3 +151,41 @@ TECHNICAL:
 - Month view multi-day spanning is still approximate.
 - Recurring events are stored but not yet expanded into occurrence instances on the grid.
 - Next rounds: split persistence, auth, recurrence expansion, and a mini-calendar date-picker in the sidebar for quick jump-to-date.
+
+---
+Task ID: 7 (15-min webDevReview round 3)
+Agent: main (webDevReview)
+Task: QA pass + add desktop sidebar (mini-calendar + calendar list + up-next) + recurrence expansion on the grid.
+
+## Current project status / assessment
+- App stable and bug-free entering this round. agent-browser QA cycled Day/Week/Month/List views with zero runtime/console errors. The 2-week seed (173 events) loads cleanly. Cross-day drag + agenda + duplicate + search + auto-optimize all confirmed from prior rounds.
+- This round delivered the sidebar (a top user-facing gap vs a real iOS/macOS calendar) and recurrence expansion (a long-standing "stored but not expanded" item).
+
+## Completed modifications / verification results
+NEW FEATURES:
+1. Desktop sidebar (`src/components/calendar/sidebar.tsx`, `role="complementary"`, hidden below `lg`). Contains:
+   - A prominent emerald "New event" button (defaults to next whole hour, 1h duration).
+   - A `MiniCalendar` (`src/components/calendar/mini-calendar.tsx`) — compact month grid with prev/next month nav, today highlight, selected-day ring, and a small dot on days that have events. Clicking any day drills into Day view on that date (reusing the existing handlePickDay). VERIFIED: clicking day 18 jumped to Fri 18 Sep Day view.
+   - A compact Calendars list with checkbox-style color toggles + per-calendar event counts (e.g. "Study 24", "Sport 6", "Work 12"). Reuses the CalendarVisibilityContext.
+   - An "Up next" section showing the 4 soonest upcoming events (color dot, title, "EEE d · HH:mm"); clicking one jumps to its day.
+2. Recurrence expansion (`src/lib/scheduler/recurrence.ts` + barrel export). `expandAllRecurrence(events, rangeStart, rangeEnd)` walks each event's `recurrence` rule (daily/weekly/monthly/yearly + interval + optional until + daysOfWeek) and emits concrete occurrence instances within the visible range, each with a stable virtual id (`{parentId}#occN`) so React keys stay stable. The parent event itself is emitted once. Wired into calendar-app: `events` is now `useMemo(() => expandAllRecurrence(rawEvents, range.from, range.to), …)`. VERIFIED: created a daily-recurring "Daily standup" via the API → it rendered 14 occurrences across the 2-week grid (one per day); deleted cleanly afterward.
+
+STYLING POLISH:
+- Sidebar uses `bg-card/30` with a right border for visual separation; sections divided by subtle borders; uppercase tracked section headers.
+- Mini-calendar day cells are `aspect-square` with hover/accent, selected gets `bg-primary`, today gets font-semibold, event days get a 1px dot (emerald normally, white when selected).
+- Calendar list rows use a 16px color chip with a Check icon when visible, dimmed when hidden.
+- Up-next rows have a color dot + title + relative date with tabular spacing.
+
+TECHNICAL:
+- `expandRecurrence` is O(range) with a 200-occurrence safety cap; handles `daysOfWeek` filtering for weekly rules.
+- The sidebar is a pure presentational component consuming the existing visibility context + calendars query — no new API.
+- `calendar-app` layout changed from `Toolbar + main + footer` to `Toolbar + (Sidebar + main) + footer` using a flex row wrapper; footer still sticky at bottom via `mt-auto`.
+- `bun run lint` clean. No runtime errors across all 4 views (cycled Day→Week→Month→List) on desktop, and sidebar correctly hidden on 375px mobile.
+
+## Unresolved issues / risks + next-phase recommendations
+- Split persistence: bumped tasks that don't fit one slot still persist only the first chunk (rest surfaced as toast). Still open.
+- Netlify Identity auth gating: still widget-only, no server-side session. Still open.
+- Recurrence expansion is view-side; edits/deletes act on the PARENT event (an occurrence's `#occN` id would 404 the API). A real product needs occurrence-exception modeling (override a single instance). Flag for future round.
+- Cross-day drag resolver still snaps start to pointer (no grab-offset preservation) — minor UX nit.
+- No all-day event strip in the day/week header yet (all-day events render as timed blocks).
+- Next rounds: split persistence, auth, occurrence-exception editing, all-day header strip, and an iCal/.ics import/export.

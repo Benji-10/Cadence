@@ -25,13 +25,14 @@ import {
   useUpdateEvent,
 } from "@/hooks/use-calendar-data";
 import { notifications } from "@/lib/notifications";
-import { validateWindow } from "@/lib/scheduler";
+import { validateWindow, expandAllRecurrence } from "@/lib/scheduler";
 import { startOfWeek as startOfWeekMonday } from "@/lib/scheduler/time";
 import { Toolbar } from "./toolbar";
 import { WeekView } from "./week-view";
 import { DayView } from "./day-view";
 import { MonthView } from "./month-view";
 import { AgendaView } from "./agenda-view";
+import { Sidebar } from "./sidebar";
 import { EditSheet, type EditSheetState } from "./edit-sheet";
 import { ReorderPreview } from "./reorder-preview";
 import { SearchPalette } from "./search-palette";
@@ -99,7 +100,13 @@ export function CalendarApp() {
   }, [view, weekStart, monthDate]);
 
   const eventsQ = useEvents(range);
-  const events: CalendarEvent[] = eventsQ.data?.events ?? [];
+  const rawEvents: CalendarEvent[] = eventsQ.data?.events ?? [];
+  // Expand recurring events into concrete occurrences within the visible range
+  // so the grid shows each repeat. One-off events pass through unchanged.
+  const events: CalendarEvent[] = useMemo(
+    () => expandAllRecurrence(rawEvents, range.from, range.to),
+    [rawEvents, range.from, range.to]
+  );
   const calendars = calendarsQ.data?.calendars ?? [];
   const calendarsById = useMemo(
     () => Object.fromEntries(calendars.map((c) => [c.id, c])),
@@ -426,6 +433,29 @@ export function CalendarApp() {
     setEditOpen(true);
   };
 
+  // New-event from the sidebar "New event" button: default to the next whole
+  // hour on the currently-selected day, 1h duration.
+  const handleNewEvent = useCallback(() => {
+    const now = new Date();
+    const start = view === "month" ? new Date(selectedDay) : new Date(now);
+    if (view !== "month") {
+      start.setMinutes(0, 0, 0);
+      start.setHours(start.getHours() + 1);
+    } else {
+      start.setHours(now.getHours() + 1, 0, 0, 0);
+    }
+    const end = new Date(start.getTime() + 60 * 60_000);
+    setEditState({
+      mode: "create",
+      defaults: {
+        start: start.toISOString(),
+        end: end.toISOString(),
+        calendarId: defaultCalendarId,
+      },
+    });
+    setEditOpen(true);
+  }, [view, selectedDay, defaultCalendarId]);
+
   // ---- Sticky footer: next event ----
   const nextEvent = useMemo(() => {
     const now = Date.now();
@@ -495,7 +525,15 @@ export function CalendarApp() {
           onOpenShortcuts={() => setShortcutsOpen(true)}
         />
 
-        <main className="min-h-0 flex-1 overflow-hidden">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <Sidebar
+            selectedDay={selectedDay}
+            events={events}
+            calendars={calendars}
+            onSelectDay={handlePickDay}
+            onNewEvent={handleNewEvent}
+          />
+          <main className="min-h-0 flex-1 overflow-hidden">
           {view === "week" ? (
             <WeekView
               weekStart={weekStart}
@@ -554,7 +592,8 @@ export function CalendarApp() {
               onNextDay={() => setSelectedDay((d) => addDays(d, 1))}
             />
           )}
-        </main>
+          </main>
+        </div>
 
         {/* Sticky footer */}
         <footer
