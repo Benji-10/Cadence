@@ -161,6 +161,29 @@ export function snapMins(mins: number, step = 15): number {
   return Math.round(mins / step) * step;
 }
 
+// Detect pairs of events that overlap in time (and aren't allowed-overlap
+// pairs like laundry+work). Returns a Set of event IDs that are in conflict.
+export function conflictingEventIds(events: CalendarEvent[]): Set<string> {
+  const ids = new Set<string>();
+  // sort by start
+  const sorted = [...events].sort(
+    (a, b) => parseISO(a.start).getTime() - parseISO(b.start).getTime()
+  );
+  for (let i = 0; i < sorted.length; i++) {
+    for (let j = i + 1; j < sorted.length; j++) {
+      const a = sorted[i];
+      const b = sorted[j];
+      // once b starts at/after a ends, no further overlaps for this i
+      if (parseISO(b.start).getTime() >= parseISO(a.end).getTime()) break;
+      // allowed-overlap pairs (e.g. laundry + work) are not conflicts
+      if (a.allowOverlap && b.allowOverlap) continue;
+      ids.add(a.id);
+      ids.add(b.id);
+    }
+  }
+  return ids;
+}
+
 // Category → human label, used in the edit sheet badge.
 export function categoryLabel(category: string): string {
   const map: Record<string, string> = {

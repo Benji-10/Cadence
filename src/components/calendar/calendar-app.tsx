@@ -38,6 +38,7 @@ import { ReorderPreview } from "./reorder-preview";
 import { SearchPalette } from "./search-palette";
 import { ShortcutsDialog } from "./shortcuts-dialog";
 import { InsightsDialog } from "./insights-dialog";
+import { ImportDialog } from "./import-dialog";
 import {
   CalendarVisibilityContext,
   type VisibilityCtx,
@@ -61,6 +62,7 @@ export function CalendarApp() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [insightsOpen, setInsightsOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   // Edit sheet + reorder preview
   const [editState, setEditState] = useState<EditSheetState | null>(null);
@@ -526,6 +528,7 @@ export function CalendarApp() {
           onOpenSearch={() => setSearchOpen(true)}
           onOpenShortcuts={() => setShortcutsOpen(true)}
           onOpenInsights={() => setInsightsOpen(true)}
+          onOpenImport={() => setImportOpen(true)}
         />
 
         <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -684,6 +687,9 @@ export function CalendarApp() {
           rangeStart={range.from}
           rangeEnd={range.to}
         />
+
+        {/* iCal import */}
+        <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
       </div>
     </CalendarVisibilityContext.Provider>
   );

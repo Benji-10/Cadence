@@ -17,6 +17,7 @@ import {
   Moon,
   Keyboard,
   Download,
+  Upload,
   BarChart3,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -50,6 +51,7 @@ interface ToolbarProps {
   onOpenSearch: () => void;
   onOpenShortcuts: () => void;
   onOpenInsights: () => void;
+  onOpenImport: () => void;
 }
 
 export function Toolbar({
@@ -66,6 +68,7 @@ export function Toolbar({
   onOpenSearch,
   onOpenShortcuts,
   onOpenInsights,
+  onOpenImport,
 }: ToolbarProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const [calendarsOpen, setCalendarsOpen] = useState(false);
@@ -232,6 +235,10 @@ export function Toolbar({
               >
                 <Download className="size-4" />
                 Export as .ics
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onOpenImport}>
+                <Upload className="size-4" />
+                Import .ics file
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onReseed}>
                 <RefreshCw className="size-4" />

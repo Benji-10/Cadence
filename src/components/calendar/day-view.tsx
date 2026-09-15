@@ -1,6 +1,7 @@
 "use client";
 
 import { format, isSameDay, parseISO } from "date-fns";
+import { useMemo } from "react";
 import type { Calendar, CalendarEvent } from "@/lib/types";
 import { DayColumn } from "./day-column";
 import { TimeAxis } from "./time-axis";
@@ -49,8 +50,22 @@ export function DayView({
   onNextDay,
 }: DayViewProps) {
   const today = new Date();
+  const allDayEvents = useMemo(
+    () =>
+      events.filter(
+        (e) =>
+          e.allDay &&
+          !hiddenCalendarIds.has(e.calendarId) &&
+          parseISO(e.start).getTime() < day.getTime() + 24 * 60 * 60 * 1000 &&
+          parseISO(e.end).getTime() > day.getTime()
+      ),
+    [events, day, hiddenCalendarIds]
+  );
   const dayEvents = events.filter(
-    (e) => isSameDay(parseISO(e.start), day) && !hiddenCalendarIds.has(e.calendarId)
+    (e) =>
+      !e.allDay &&
+      isSameDay(parseISO(e.start), day) &&
+      !hiddenCalendarIds.has(e.calendarId)
   );
 
   return (
@@ -96,6 +111,33 @@ export function DayView({
           )}
         </div>
       </div>
+
+      {/* All-day strip */}
+      {allDayEvents.length > 0 && (
+        <div className="flex border-b border-border bg-muted/20">
+          <div className="flex w-14 shrink-0 items-center justify-end border-r border-border px-1.5">
+            <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+              all-day
+            </span>
+          </div>
+          <div className="flex flex-1 flex-wrap gap-1 p-1">
+            {allDayEvents.map((ev) => {
+              const cal = calendarsById[ev.calendarId];
+              const color = ev.color ?? cal?.color ?? "#64748B";
+              return (
+                <button
+                  key={ev.id}
+                  onClick={() => onSelect?.(ev)}
+                  className="truncate rounded px-2 py-0.5 text-left text-[11px] font-medium text-white transition-filter hover:brightness-110"
+                  style={{ backgroundColor: color }}
+                >
+                  {ev.title}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div
         ref={scrollContainerRef}

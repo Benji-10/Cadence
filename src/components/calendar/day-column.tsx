@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { isSameDay, parseISO } from "date-fns";
 import type { Calendar, CalendarEvent } from "@/lib/types";
-import { HOUR_HEIGHT, layoutEvents, snapMins } from "@/lib/calendar-ui";
+import { HOUR_HEIGHT, layoutEvents, snapMins, conflictingEventIds } from "@/lib/calendar-ui";
 import { EventBlock } from "./event-block";
 import { NowLine } from "./now-line";
 import { useEventDrag } from "@/hooks/use-event-drag";
@@ -54,6 +54,7 @@ export function DayColumn({
   sharedDrag,
 }: DayColumnProps) {
   const positioned = useMemo(() => layoutEvents(events), [events]);
+  const conflictIds = useMemo(() => conflictingEventIds(events), [events]);
 
   // Fall back to a local drag when no shared instance is supplied (DayView).
   const localDrag = useEventDrag({
@@ -186,6 +187,7 @@ export function DayColumn({
             lanesInCluster={lanesInCluster}
             calendarsById={calendarsById}
             selected={selectedEventId === event.id}
+            conflict={conflictIds.has(event.id)}
             dragPreview={drag.drag}
             resizePreview={resize.resize}
             didDragRef={drag.didDragRef}

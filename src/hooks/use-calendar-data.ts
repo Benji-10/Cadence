@@ -139,6 +139,19 @@ export function useSearchEvents(q: string) {
   });
 }
 
+// ---- iCal import ----------------------------------------------------------
+export function useIcsImport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ics, calendarId }: { ics: string; calendarId: string }) =>
+      api.icsImport(ics, calendarId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["events"] });
+      qc.invalidateQueries({ queryKey: ["calendars"] });
+    },
+  });
+}
+
 // ---- Reseed ---------------------------------------------------------------
 export function useReseed() {
   const qc = useQueryClient();

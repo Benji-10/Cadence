@@ -225,3 +225,37 @@ TECHNICAL:
 - iCal IMPORT is not yet supported (export only). A `.ics` parse + create-events path would close the loop.
 - The all-day strip is week-view only; DayView could get a single-day all-day header too.
 - Next rounds: split persistence, auth, iCal import, occurrence exceptions, day-view all-day header.
+
+---
+Task ID: 9 (15-min webDevReview round 5)
+Agent: main (webDevReview)
+Task: QA pass + add iCal import, day-view all-day strip, and conflict highlighting.
+
+## Current project status / assessment
+- App stable and bug-free entering this round. agent-browser QA cycled Day/Week/Month/List with zero runtime/console errors. All prior features (sidebar, cross-day drag, agenda, recurrence, all-day strip, .ics export, insights) confirmed working.
+- This round closed the .ics round-trip (import) and added visual feedback (conflict highlighting) + day-view all-day parity.
+
+## Completed modifications / verification results
+NEW FEATURES:
+1. iCal (.ics) import (`src/app/api/ical/import/route.ts`, `POST /api/ical/import`). A minimal RFC 5545 parser: unfolds continuation lines, splits VEVENT blocks, reads SUMMARY/LOCATION/DESCRIPTION/DTSTART/DTEND (VALUE=DATE for all-day, with exclusive-end back-off)/RRULE (FREQ/INTERVAL/UNTIL/BYDAY)/VALARM (TRIGGER). Creates an Event per VEVENT within ±1 year of now, auto-categorising via `applyInferredMeta`. Added `api.icsImport()` + `useIcsImport` hook + an `ImportDialog` component (`src/components/calendar/import-dialog.tsx`) with a calendar picker + dashed file-drop zone + import button + success toast. Added "Import .ics file" item to the toolbar's More menu. VERIFIED: imported a 2-event .ics (Dentist appointment + Gym session) via the API → "imported: 2, titles: [Dentist appointment, Gym session]"; both appeared on the grid (Dentist auto-categorised as fixed, Gym as sport).
+2. Day-view all-day strip (`src/components/calendar/day-view.tsx`). A single-row strip below the day header showing all-day events that cover the day, as colored chips (matching the week-view strip's styling). All-day events are now excluded from the timed DayColumn in DayView too. VERIFIED: created a 1-day "Annual leave" all-day event → the Day view showed "ALL-DAY" label + "Annual leave" chip; footer showed "Starting now: Annual leave".
+3. Conflict highlighting (`conflictingEventIds` helper in `src/lib/calendar-ui.ts` + `conflict` prop on EventBlock). Detects pairs of events that overlap in time (excluding allowed-overlap pairs like laundry+work). Conflicting events get a red ring (`ring-2 ring-red-500`) and a small AlertTriangle icon next to the title. VERIFIED: created "Conflicting meeting" 09:30-10:30 overlapping Tuesday's "Paid work" 09:00-11:00 → both rendered with the conflict styling.
+
+STYLING POLISH:
+- Import dialog: dashed-border drop zone with FileText/CheckCircle2 icon states, calendar picker with color dots, emerald import button, error hint.
+- Conflict events: red ring + AlertTriangle icon for at-a-glance scheduling problems.
+- Day-view all-day strip mirrors the week-view's `bg-muted/20` styling.
+
+TECHNICAL:
+- The iCal parser is dependency-free (~120 lines), handles line folding, all-day exclusive DTEND, TZID-as-UTC fallback, and BYDAY→daysOfWeek mapping.
+- `conflictingEventIds` is O(n²) per day but n is small (a day's events); memoised per DayColumn.
+- `bun run lint` clean. No runtime errors.
+- Note: cold-compile 404s on new API routes in dev resolve after first hit; the import route confirmed working (returns 400 on empty body, 200 with valid ics).
+
+## Unresolved issues / risks + next-phase recommendations
+- Split persistence: bumped tasks that don't fit one slot still persist only the first chunk. Still open.
+- Netlify Identity auth gating: still widget-only. Still open.
+- Occurrence-exception editing for recurring events: still edits the parent. Still open.
+- iCal import doesn't deduplicate (re-importing the same file creates duplicates). A UID-based upsert would fix this.
+- Conflict highlighting is per-day-column only; the agenda view could surface conflicts too.
+- Next rounds: split persistence, auth, occurrence exceptions, iCal dedupe, agenda conflict surfacing.

@@ -42,6 +42,13 @@ export const api = {
     return `/api/ical${qs ? "?" + qs : ""}`;
   },
 
+  // Upload an .ics string to be parsed and imported into a calendar.
+  icsImport: (ics: string, calendarId: string) =>
+    jfetch<{ imported: number; titles: string[] }>("/api/ical/import", {
+      method: "POST",
+      body: JSON.stringify({ ics, calendarId }),
+    }),
+
   reorder: (body: {
     mode: "week" | "around";
     rangeStart: string;

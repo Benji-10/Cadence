@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, type MutableRefObject } from "react";
-import { Lock, MapPin, GripVertical } from "lucide-react";
+import { Lock, MapPin, GripVertical, AlertTriangle } from "lucide-react";
 import type { Calendar, CalendarEvent } from "@/lib/types";
 import {
   contrastText,
@@ -22,6 +22,7 @@ interface EventBlockProps {
   calendarsById: Record<string, Calendar | undefined>;
   selected?: boolean;
   isGhost?: boolean;
+  conflict?: boolean;
   dragPreview?: DragPreview | null;
   resizePreview?: ResizePreview | null;
   didDragRef?: MutableRefObject<boolean>;
@@ -41,6 +42,7 @@ function EventBlockImpl({
   calendarsById,
   selected,
   isGhost,
+  conflict,
   dragPreview,
   resizePreview,
   didDragRef,
@@ -103,7 +105,8 @@ function EventBlockImpl({
         "transition-[box-shadow,transform] duration-150 hover:z-20 hover:shadow-lg active:cursor-grabbing",
         "hover:-translate-y-0.5",
         selected && "ring-2 ring-offset-1 ring-offset-background",
-        isGhost && "opacity-60 ring-2 ring-dashed"
+        isGhost && "opacity-60 ring-2 ring-dashed",
+        conflict && !isGhost && "ring-2 ring-red-500 ring-offset-1 ring-offset-background"
       )}
       style={{
         top,
@@ -166,6 +169,9 @@ function EventBlockImpl({
           </span>
           {event.flexibility === "fixed" && !short && (
             <Lock className="mt-[1px] size-3 shrink-0 opacity-80" />
+          )}
+          {conflict && !short && (
+            <AlertTriangle className="mt-[1px] size-3 shrink-0 text-red-500" />
           )}
         </div>
         {!veryShort && (
