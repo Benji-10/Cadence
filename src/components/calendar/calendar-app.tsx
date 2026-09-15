@@ -60,6 +60,7 @@ export function CalendarApp() {
 
   // View state
   // Mobile defaults to Day view (iOS shows one day at a time on phone).
+  // Week view is not shown on mobile — there isn't enough horizontal space.
   const [view, setView] = useState<View>(() =>
     typeof window !== "undefined" && window.innerWidth < 640 ? "day" : "week"
   );
@@ -742,7 +743,7 @@ export function CalendarApp() {
 
         {/* Sticky footer */}
         <footer
-          className="glass mt-auto flex h-10 items-center justify-between gap-3 border-t border-border bg-background/90 px-3 text-xs text-muted-foreground sm:px-4"
+          className="glass safe-bottom mt-auto flex h-10 items-center justify-between gap-3 border-t border-border bg-background/90 px-3 text-xs text-muted-foreground sm:px-4"
           role="contentinfo"
         >
           <div className="flex min-w-0 items-center gap-2">

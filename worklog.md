@@ -517,3 +517,27 @@ TECHNICAL:
 - The mobile Week view still shows all 7 days squished (user's original complaint). The fix was to default to Day view on mobile, but a true iOS-style "week strip + single day" mobile week view is still TODO.
 - Split persistence, auth, occurrence exceptions still open (long-standing).
 - Next rounds: mobile week-strip view, split persistence, auth.
+
+---
+Task ID: 18 (user feedback round 4 — safe-area + hide Week on mobile)
+Agent: main
+Task: Add safe-area insets for iPhone notch/status bar; hide Week view on mobile.
+
+## Current project status / assessment
+- App stable. Fixed two mobile issues: the notch/status bar blocking the top of the app in PWA mode, and the Week view being shown on mobile where there's not enough space.
+
+## Completed modifications / verification results
+1. **Safe-area insets for iPhone notch/home indicator**. Added `safe-top` / `safe-bottom` / `safe-left` / `safe-right` CSS utilities (using `env(safe-area-inset-*)`). Applied `safe-top` to the sticky toolbar `<header>` and `safe-bottom` to the sticky footer. The viewport already had `viewportFit: "cover"` and `apple-mobile-web-app-status-bar-style: "black-translucent"` (set in round 1), which together tell iOS to extend content under the status bar and respect the safe-area insets. VERIFIED: the `safe-top` class is on the header; simulating a 47px notch inset correctly applied `padding-top: 47px`. On actual iPhones in PWA mode, this pushes the toolbar below the notch/status bar so it's fully usable.
+
+2. **Week view hidden on mobile**. The Week segment in the toolbar toggle is now `hidden sm:block` — it only appears on screens ≥640px. On mobile, the toggle shows only D (Day) and M (Month); Year and List remain accessible via the clickable label zoom (Day→Month→Year) and the More menu respectively. VERIFIED: mobile (375px) toolbar shows [Prev] [Now] [Next] [Sep 15] [D] [M] [More] — no Week button. Desktop (1280px) still shows all 5 segments.
+
+TECHNICAL:
+- `viewport-fit: cover` (already set) tells the browser to render into safe areas.
+- `env(safe-area-inset-top)` returns 0 on desktop/non-notched devices, so the padding is a no-op there.
+- The mobile default remains Day view (set in round 17).
+- `bun run lint` clean. No runtime errors.
+
+## Unresolved issues / risks + next-phase recommendations
+- Split persistence, auth, occurrence exceptions still open (long-standing).
+- The mobile Week view is hidden but not replaced with an iOS-style "day strip + single day" view — the Day view with prev/next chevrons serves that role for now.
+- Next rounds: split persistence, auth, occurrence exceptions.

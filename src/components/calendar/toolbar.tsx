@@ -88,7 +88,7 @@ export function Toolbar({
 
   return (
     <header
-      className="glass sticky top-0 z-30 border-b border-border bg-background/80"
+      className="glass safe-top sticky top-0 z-30 border-b border-border bg-background/80"
       role="banner"
     >
       <div className="flex h-14 items-center gap-2 px-3 sm:px-4">
@@ -214,9 +214,9 @@ export function Toolbar({
               <span className="sm:hidden">D</span>
               <span className="hidden sm:inline">Day</span>
             </SegBtn>
-            <SegBtn active={view === "week"} onClick={() => onViewChange("week")}>
-              <span className="sm:hidden">W</span>
-              <span className="hidden sm:inline">Week</span>
+            {/* Week hidden on mobile — not enough space for 7 columns on a phone */}
+            <SegBtn active={view === "week"} onClick={() => onViewChange("week")} className="hidden sm:block">
+              <span>Week</span>
             </SegBtn>
             <SegBtn active={view === "month"} onClick={() => onViewChange("month")}>
               <span className="sm:hidden">M</span>
