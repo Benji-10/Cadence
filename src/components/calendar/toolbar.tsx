@@ -19,6 +19,8 @@ import {
   Download,
   Upload,
   BarChart3,
+  Settings,
+  CalendarSearch,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -52,6 +54,8 @@ interface ToolbarProps {
   onOpenShortcuts: () => void;
   onOpenInsights: () => void;
   onOpenImport: () => void;
+  onOpenSettings: () => void;
+  onOpenFreeSlot: () => void;
 }
 
 export function Toolbar({
@@ -69,6 +73,8 @@ export function Toolbar({
   onOpenShortcuts,
   onOpenInsights,
   onOpenImport,
+  onOpenSettings,
+  onOpenFreeSlot,
 }: ToolbarProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const [calendarsOpen, setCalendarsOpen] = useState(false);
@@ -140,6 +146,28 @@ export function Toolbar({
             title="Week insights"
           >
             <BarChart3 className="size-4" />
+          </Button>
+
+          {/* Free-slot finder */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onOpenFreeSlot}
+            aria-label="Find a free slot"
+            title="Find a free slot"
+          >
+            <CalendarSearch className="size-4" />
+          </Button>
+
+          {/* Settings */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onOpenSettings}
+            aria-label="Settings"
+            title="Settings"
+          >
+            <Settings className="size-4" />
           </Button>
 
           {/* Day/Week/Month/List segmented toggle */}

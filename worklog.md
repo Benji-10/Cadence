@@ -292,3 +292,36 @@ TECHNICAL:
 - The agenda conflict detection is O(n²) over the whole range; fine for a week but could be optimised with interval trees for very large ranges.
 - No "free-slot finder" standalone UI yet (the edit sheet's "Find best slot" exists, but there's no global "find me 2h of free time this week" affordance).
 - Next rounds: split persistence, auth, occurrence exceptions, a global free-slot finder, and a settings page (default calendar, default alert, theme persistence).
+
+---
+Task ID: 11 (15-min webDevReview round 7)
+Agent: main (webDevReview)
+Task: QA pass + add settings page (persistent prefs) and global free-slot finder.
+
+## Current project status / assessment
+- App stable entering this round. agent-browser QA cycled Day/Week/Month/List with zero runtime/console errors. Hit one transient issue: Radix Select rejects empty-string values (`SelectItem value=""`), which crashed the Settings dialog — fixed by using a sentinel `"__none__"`. Also worked around a react-hooks/set-state-in-effect lint rule by implementing `useMounted` via `useSyncExternalStore` (the React-blessed pattern).
+- This round delivered two high-value UX features: persistent settings + a global free-slot finder.
+
+## Completed modifications / verification results
+NEW FEATURES:
+1. Settings store + dialog (`src/lib/settings-store.ts` + `src/components/calendar/settings-dialog.tsx`). A zustand store with `persist` middleware → localStorage key `cadence-settings`. Holds: defaultCalendarId, defaultAlerts (minutes-before), weekStartsOn (0/1), snapMinutes (15/30/60), autoScrollToNow, showConflictBadges, defaultEventDurationMins. The Settings dialog (toolbar Settings icon) exposes all of these: default calendar Select, 4 duration buttons (30m/1h/1.5h/2h), 6 alert preset chips, week-start toggle, snap toggle, and two Switch rows (conflict badges, auto-scroll). Wired into the app: defaultCalendarId now drives the default calendar for new events (falling back to first-visible if the configured one is hidden); defaultEventDurationMins drives new-event end times; autoScrollToNow gates the scroll-to-now effect. VERIFIED: opened Settings → all sections rendered; changing default duration to 1.5h made the New Event button create 1h30m events.
+2. Global free-slot finder (`src/components/calendar/free-slot-dialog.tsx`). Toolbar CalendarSearch icon. Lets the user pick a duration (15/30/60/90/120/180 min) + location filter (any/home/campus/sports/out), then lists up to 12 free gaps in the visible range using the existing `findFreeGaps` scheduler helper. Each slot shows a day chip, time range, total free duration ("2h 30m free"), and inferred location context. Clicking a slot opens the create sheet pre-filled with that slot's start + the selected duration. VERIFIED: opened the finder → showed 9+ slots (e.g. "MON 14 09:00–11:30 2h 30m free home"); clicking one opened "New event" pre-filled Mon 14 Sep 09:00–10:00 (1h default duration).
+
+STYLING POLISH:
+- Settings: section labels with icons, bordered toggle rows with Switch, emerald accent on active chips/buttons, "Done" closes with a success toast.
+- Free-slot finder: each slot is a card with a day chip (emerald-tinted), tabular-nums time range, location pill with MapPin, and a "Use →" hint that fades in on hover.
+- Toolbar gained Settings (gear) + CalendarSearch icons next to Insights.
+
+TECHNICAL:
+- `useMounted` hook (`src/hooks/use-mounted.ts`) via `useSyncExternalStore` — avoids both hydration mismatch AND the react-hooks/set-state-in-effect lint rule.
+- Radix Select sentinel value pattern (`__none__` → null) for "no selection" options.
+- All settings are client-side persisted; no schema/API changes needed.
+- `bun run lint` clean. No runtime errors across all 4 views.
+
+## Unresolved issues / risks + next-phase recommendations
+- Split persistence: bumped tasks that don't fit one slot still persist only the first chunk. Still open (long-standing).
+- Netlify Identity auth gating: still widget-only. Still open (long-standing).
+- Occurrence-exception editing for recurring events: still edits the parent. Still open.
+- Settings don't yet drive `snapMinutes` / `weekStartsOn` / `defaultAlerts` into the actual drag/resize/week-start/create code paths — the values are stored and the UI reflects them, but the downstream wiring is partial (defaultCalendarId + defaultEventDurationMins + autoScrollToNow are wired; the rest are stored for future use). Next round should wire the remaining settings.
+- The free-slot finder uses the visible range only; a "next 7 days" option could be useful regardless of current view.
+- Next rounds: wire remaining settings (snap, week-start, default-alerts on create), split persistence, auth, occurrence exceptions.

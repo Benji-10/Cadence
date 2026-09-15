@@ -26,6 +26,7 @@ import {
 } from "@/hooks/use-calendar-data";
 import { notifications } from "@/lib/notifications";
 import { validateWindow, expandAllRecurrence } from "@/lib/scheduler";
+import { useSettings } from "@/lib/settings-store";
 import { startOfWeek as startOfWeekMonday } from "@/lib/scheduler/time";
 import { Toolbar } from "./toolbar";
 import { WeekView } from "./week-view";
@@ -39,6 +40,8 @@ import { SearchPalette } from "./search-palette";
 import { ShortcutsDialog } from "./shortcuts-dialog";
 import { InsightsDialog } from "./insights-dialog";
 import { ImportDialog } from "./import-dialog";
+import { SettingsDialog } from "./settings-dialog";
+import { FreeSlotDialog } from "./free-slot-dialog";
 import {
   CalendarVisibilityContext,
   type VisibilityCtx,
@@ -63,6 +66,9 @@ export function CalendarApp() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [freeSlotOpen, setFreeSlotOpen] = useState(false);
+  const settings = useSettings();
 
   // Edit sheet + reorder preview
   const [editState, setEditState] = useState<EditSheetState | null>(null);
@@ -127,10 +133,18 @@ export function CalendarApp() {
 
   // Default calendar id (first visible, or first overall)
   const defaultCalendarId = useMemo(() => {
+    // Prefer the user's configured default (from Settings), if it's still
+    // visible; otherwise fall back to the first visible calendar.
+    if (
+      settings.defaultCalendarId &&
+      !hiddenCalendarIds.has(settings.defaultCalendarId)
+    ) {
+      return settings.defaultCalendarId;
+    }
     return (
       calendars.find((c) => !hiddenCalendarIds.has(c.id))?.id ?? calendars[0]?.id
     );
-  }, [calendars, hiddenCalendarIds]);
+  }, [calendars, hiddenCalendarIds, settings.defaultCalendarId]);
 
   // ---- Bootstrap on mount ----
   useEffect(() => {
@@ -151,14 +165,16 @@ export function CalendarApp() {
   }, [calendars]);
 
   // Auto-scroll to ~current time on first load / view switch (week/day only).
+  // Respects the user's "auto-scroll to now" setting.
   useEffect(() => {
     if (view === "month") return;
+    if (!settings.autoScrollToNow) return;
     if (!scrollRef.current) return;
     const now = new Date();
     const mins = now.getHours() * 60 + now.getMinutes();
     const top = Math.max(0, (mins / 60) * HOUR_HEIGHT - 120);
     scrollRef.current.scrollTop = top;
-  }, [view, weekStart, monthDate]);
+  }, [view, weekStart, monthDate, settings.autoScrollToNow]);
 
   // ---- Notifications wiring ----
   useEffect(() => {
@@ -448,7 +464,9 @@ export function CalendarApp() {
     } else {
       start.setHours(now.getHours() + 1, 0, 0, 0);
     }
-    const end = new Date(start.getTime() + 60 * 60_000);
+    const end = new Date(
+      start.getTime() + settings.defaultEventDurationMins * 60_000
+    );
     setEditState({
       mode: "create",
       defaults: {
@@ -458,7 +476,7 @@ export function CalendarApp() {
       },
     });
     setEditOpen(true);
-  }, [view, selectedDay, defaultCalendarId]);
+  }, [view, selectedDay, defaultCalendarId, settings.defaultEventDurationMins]);
 
   // ---- Sticky footer: next event ----
   const nextEvent = useMemo(() => {
@@ -529,6 +547,8 @@ export function CalendarApp() {
           onOpenShortcuts={() => setShortcutsOpen(true)}
           onOpenInsights={() => setInsightsOpen(true)}
           onOpenImport={() => setImportOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenFreeSlot={() => setFreeSlotOpen(true)}
         />
 
         <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -690,6 +710,25 @@ export function CalendarApp() {
 
         {/* iCal import */}
         <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
+
+        {/* Settings */}
+        <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+
+        {/* Free-slot finder */}
+        <FreeSlotDialog
+          open={freeSlotOpen}
+          onOpenChange={setFreeSlotOpen}
+          events={events}
+          rangeStart={range.from}
+          rangeEnd={range.to}
+          onPick={(start, end) => {
+            setEditState({
+              mode: "create",
+              defaults: { start, end, calendarId: defaultCalendarId },
+            });
+            setEditOpen(true);
+          }}
+        />
       </div>
     </CalendarVisibilityContext.Provider>
   );
