@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
 
   const events = parseIcs(body.ics);
   let imported = 0;
+  let updated = 0;
   const titles: string[] = [];
 
   for (const ev of events) {
@@ -42,35 +43,52 @@ export async function POST(req: NextRequest) {
     const endIsBeforeStart = ev.end.getTime() <= ev.start.getTime();
     const end = endIsBeforeStart ? new Date(ev.start.getTime() + 60 * 60 * 1000) : ev.end;
 
-    await db.event.create({
-      data: {
-        title,
-        start: ev.start,
-        end,
-        allDay: ev.allDay,
-        location: ev.location ?? null,
-        notes: ev.description ?? null,
-        calendarId: body.calendarId,
-        category: inferred.category ?? "other",
-        flexibility: inferred.flexibility ?? "movable",
-        locationType: inferred.locationType ?? "any",
-        minChunkMins: inferred.minChunkMins ?? 30,
-        allowOverlap: inferred.allowOverlap ?? false,
-        priority: 0,
-        travelMins: 0,
-        color: null,
-        alerts: JSON.stringify(ev.alerts?.length ? ev.alerts : [-30, -10, 0]),
-        recurrence: ev.recurrence ? JSON.stringify(ev.recurrence) : null,
-      },
-    });
-    imported++;
+    const data = {
+      title,
+      start: ev.start,
+      end,
+      allDay: ev.allDay,
+      location: ev.location ?? null,
+      notes: ev.description ?? null,
+      calendarId: body.calendarId,
+      category: inferred.category ?? "other",
+      flexibility: inferred.flexibility ?? "movable",
+      locationType: inferred.locationType ?? "any",
+      minChunkMins: inferred.minChunkMins ?? 30,
+      allowOverlap: inferred.allowOverlap ?? false,
+      priority: 0,
+      travelMins: 0,
+      color: null,
+      alerts: JSON.stringify(ev.alerts?.length ? ev.alerts : [-30, -10, 0]),
+      recurrence: ev.recurrence ? JSON.stringify(ev.recurrence) : null,
+    };
+
+    // UID-based upsert: re-importing the same .ics updates existing events
+    // instead of creating duplicates.
+    if (ev.uid) {
+      const existing = await db.event.findUnique({
+        where: { icsUid: ev.uid },
+        select: { id: true },
+      });
+      if (existing) {
+        await db.event.update({ where: { id: existing.id }, data });
+        updated++;
+        continue;
+      }
+      await db.event.create({ data: { ...data, icsUid: ev.uid } });
+      imported++;
+    } else {
+      await db.event.create({ data });
+      imported++;
+    }
     if (titles.length < 6) titles.push(title);
   }
 
-  return NextResponse.json({ imported, titles });
+  return NextResponse.json({ imported, updated, titles });
 }
 
 interface ParsedVEvent {
+  uid: string | null;
   summary: string;
   start: Date;
   end: Date;
@@ -104,6 +122,7 @@ function parseIcs(ics: string): ParsedVEvent[] {
       inEvent = false;
       if (cur.start && cur.end) {
         events.push({
+          uid: cur.uid ?? null,
           summary: cur.summary || "Untitled event",
           start: cur.start,
           end: cur.end,
@@ -142,6 +161,9 @@ function parseIcs(ics: string): ParsedVEvent[] {
     }
 
     switch (name) {
+      case "UID":
+        cur.uid = value;
+        break;
       case "SUMMARY":
         cur.summary = unescape(value);
         break;

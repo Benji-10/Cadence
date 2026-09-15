@@ -8,9 +8,9 @@ import {
   parseISO,
   differenceInMinutes,
 } from "date-fns";
-import { Lock, MapPin, Clock, ChevronRight } from "lucide-react";
+import { Lock, MapPin, Clock, ChevronRight, AlertTriangle } from "lucide-react";
 import type { Calendar, CalendarEvent } from "@/lib/types";
-import { eventColor } from "@/lib/calendar-ui";
+import { eventColor, conflictingEventIds } from "@/lib/calendar-ui";
 import { cn } from "@/lib/utils";
 
 interface AgendaViewProps {
@@ -58,6 +58,17 @@ export function AgendaView({
     }));
   }, [events, hiddenCalendarIds, rangeStart, rangeEnd]);
 
+  // Conflict detection across the whole agenda range (so a conflict badge
+  // appears on any row that overlaps another).
+  const conflictIds = useMemo(
+    () =>
+      conflictingEventIds(
+        events.filter((e) => !hiddenCalendarIds.has(e.calendarId))
+      ),
+    [events, hiddenCalendarIds]
+  );
+  const conflictCount = conflictIds.size;
+
   if (grouped.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center text-muted-foreground">
@@ -71,6 +82,16 @@ export function AgendaView({
   return (
     <div className="cal-scroll h-full overflow-auto">
       <div className="mx-auto max-w-2xl px-3 py-4 sm:px-6">
+        {conflictCount > 0 && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+            <AlertTriangle className="size-4 shrink-0" />
+            <span>
+              <span className="font-semibold">{conflictCount}</span> conflicting
+              event{conflictCount === 1 ? "" : "s"} detected — overlapping times
+              are highlighted below.
+            </span>
+          </div>
+        )}
         {grouped.map(({ key, day, events: evs }) => {
           const today_ = isToday(day);
           const totalMins = evs.reduce(
@@ -78,6 +99,7 @@ export function AgendaView({
               sum + differenceInMinutes(parseISO(e.end), parseISO(e.start)),
             0
           );
+          const dayConflicts = evs.filter((e) => conflictIds.has(e.id)).length;
           return (
             <section key={key} className="mb-6">
               {/* Day header */}
@@ -106,9 +128,17 @@ export function AgendaView({
                     Today
                   </span>
                 )}
-                <span className="ml-auto text-[10px] text-muted-foreground">
-                  {evs.length} event{evs.length > 1 ? "s" : ""} ·{" "}
-                  {Math.floor(totalMins / 60)}h {totalMins % 60}m
+                <span className="ml-auto flex items-center gap-2 text-[10px] text-muted-foreground">
+                  {dayConflicts > 0 && (
+                    <span className="flex items-center gap-1 rounded-full bg-red-500/15 px-1.5 py-0.5 font-medium text-red-600 dark:text-red-400">
+                      <AlertTriangle className="size-2.5" />
+                      {dayConflicts} conflict{dayConflicts > 1 ? "s" : ""}
+                    </span>
+                  )}
+                  <span>
+                    {evs.length} event{evs.length > 1 ? "s" : ""} ·{" "}
+                    {Math.floor(totalMins / 60)}h {totalMins % 60}m
+                  </span>
                 </span>
               </button>
 
@@ -121,11 +151,17 @@ export function AgendaView({
                   const end = parseISO(ev.end);
                   const dur = differenceInMinutes(end, start);
                   const upcoming = start.getTime() >= Date.now();
+                  const conflict = conflictIds.has(ev.id);
                   return (
                     <li key={ev.id}>
                       <button
                         onClick={() => onSelect?.(ev)}
-                        className="group flex w-full items-stretch gap-2 rounded-lg border border-border/60 bg-card p-2 text-left transition-colors hover:border-border hover:bg-accent/40"
+                        className={cn(
+                          "group flex w-full items-stretch gap-2 rounded-lg border bg-card p-2 text-left transition-colors hover:bg-accent/40",
+                          conflict
+                            ? "border-red-500/50 hover:border-red-500"
+                            : "border-border/60 hover:border-border"
+                        )}
                       >
                         <span
                           className="w-1 shrink-0 rounded-full"
@@ -146,6 +182,9 @@ export function AgendaView({
                             </span>
                             {fixed && (
                               <Lock className="size-3 shrink-0 text-muted-foreground" />
+                            )}
+                            {conflict && (
+                              <AlertTriangle className="size-3 shrink-0 text-red-500" />
                             )}
                           </span>
                           <span className="flex items-center gap-2 text-[11px] text-muted-foreground">

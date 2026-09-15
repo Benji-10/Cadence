@@ -59,9 +59,13 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
         ics: icsText,
         calendarId: effectiveCalId,
       });
-      toast.success(`Imported ${res.imported} event${res.imported === 1 ? "" : "s"}.`, {
-        description: res.titles.slice(0, 3).join(" · "),
-      });
+      const total = res.imported + res.updated;
+      toast.success(
+        `${res.imported} new${res.imported === 1 ? "" : ""}${res.updated ? `, ${res.updated} updated` : ""} event${total === 1 ? "" : "s"}.`,
+        {
+          description: res.titles.slice(0, 3).join(" · "),
+        }
+      );
       onOpenChange(false);
       setFileName("");
       setIcsText("");

@@ -259,3 +259,36 @@ TECHNICAL:
 - iCal import doesn't deduplicate (re-importing the same file creates duplicates). A UID-based upsert would fix this.
 - Conflict highlighting is per-day-column only; the agenda view could surface conflicts too.
 - Next rounds: split persistence, auth, occurrence exceptions, iCal dedupe, agenda conflict surfacing.
+
+---
+Task ID: 10 (15-min webDevReview round 6)
+Agent: main (webDevReview)
+Task: QA pass + add iCal import dedupe (UID upsert), agenda conflict surfacing.
+
+## Current project status / assessment
+- App stable entering this round. agent-browser QA cycled Day/Week/Month/List with zero runtime/console errors. Required a dev-server restart because the cached PrismaClient (singleton on globalThis) didn't know about a new schema field until the process restarted — important to note for future schema changes.
+- This round closed two outstanding items: iCal import dedupe + agenda conflict surfacing.
+
+## Completed modifications / verification results
+NEW FEATURES:
+1. iCal import dedupe (UID-based upsert). Added `icsUid String? @unique` to the Event schema (`prisma/schema.prisma`) + `db:push` + Prisma client regenerate. Updated the parser (`src/app/api/ical/import/route.ts`) to extract the `UID:` property, and the import loop to: if an event with the same `icsUid` exists, UPDATE it; otherwise CREATE (with `icsUid` set). Updated the api-client + hook types to include the new `updated` count, and the ImportDialog toast to report "X new, Y updated". VERIFIED: imported a .ics with `UID:dedupe-test-uid@external` twice → first call returned `{"imported":1,"updated":0}`, second returned `{"imported":0,"updated":1}`; confirmed only ONE "Standup meeting" event exists in the DB (no duplicate).
+2. Agenda conflict surfacing (`src/components/calendar/agenda-view.tsx`). Computes `conflictingEventIds` across the whole visible range and: (a) renders a red banner at the top of the agenda when conflicts exist ("N conflicting events detected — overlapping times are highlighted below"), (b) adds a per-day "N conflicts" badge in each day header, and (c) gives conflicting event rows a red border + AlertTriangle icon next to the title. VERIFIED: created an "Overlap test" 09:30-10:30 overlapping Tuesday's "Paid work" 09:00-11:00 → agenda showed the banner, "4 conflicts" badges on Mon/Tue day headers, and the Overlap test row highlighted red.
+
+STYLING POLISH:
+- Agenda conflict banner: `border-red-500/30 bg-red-500/10` with AlertTriangle icon, red-700/red-300 text.
+- Day-header conflict badge: `bg-red-500/15 text-red-600` pill with mini AlertTriangle.
+- Conflicting agenda rows: `border-red-500/50` (hover `border-red-500`) so they stand out from normal rows.
+- Import toast now distinguishes "new" vs "updated" counts.
+
+TECHNICAL:
+- Schema migration: `icsUid` is nullable + unique, so natively-created events (no UID) are unaffected; only imported events carry it.
+- The PrismaClient singleton cache (`globalThis.prisma`) means hot-reload doesn't pick up new schema fields — required a full dev-server restart. Noted for future rounds.
+- `bun run lint` clean. No runtime errors across all 4 views.
+
+## Unresolved issues / risks + next-phase recommendations
+- Split persistence: bumped tasks that don't fit one slot still persist only the first chunk. Still open (long-standing).
+- Netlify Identity auth gating: still widget-only. Still open (long-standing).
+- Occurrence-exception editing for recurring events: still edits the parent. Still open.
+- The agenda conflict detection is O(n²) over the whole range; fine for a week but could be optimised with interval trees for very large ranges.
+- No "free-slot finder" standalone UI yet (the edit sheet's "Find best slot" exists, but there's no global "find me 2h of free time this week" affordance).
+- Next rounds: split persistence, auth, occurrence exceptions, a global free-slot finder, and a settings page (default calendar, default alert, theme persistence).

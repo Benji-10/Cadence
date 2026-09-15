@@ -43,6 +43,10 @@ model Event {
   allDay      Boolean  @default(false)
   timezone    String?
 
+  // optional iCalendar UID for import dedupe (re-importing the same .ics
+  // upserts instead of duplicating). Null for natively-created events.
+  icsUid      String?  @unique
+
   // calendar
   calendarId  String
   calendar    Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)

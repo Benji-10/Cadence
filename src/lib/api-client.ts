@@ -44,7 +44,7 @@ export const api = {
 
   // Upload an .ics string to be parsed and imported into a calendar.
   icsImport: (ics: string, calendarId: string) =>
-    jfetch<{ imported: number; titles: string[] }>("/api/ical/import", {
+    jfetch<{ imported: number; updated: number; titles: string[] }>("/api/ical/import", {
       method: "POST",
       body: JSON.stringify({ ics, calendarId }),
     }),
