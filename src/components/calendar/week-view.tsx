@@ -31,6 +31,7 @@ interface WeekViewProps {
   onBlockedMove?: (event: CalendarEvent) => void;
   defaultCalendarId?: string;
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
+  onLongPress?: (event: CalendarEvent) => void;
 }
 
 export function WeekView({
@@ -46,6 +47,7 @@ export function WeekView({
   onBlockedMove,
   defaultCalendarId,
   scrollContainerRef,
+  onLongPress,
 }: WeekViewProps) {
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const today = new Date();
@@ -250,6 +252,7 @@ export function WeekView({
                   defaultCalendarId={defaultCalendarId}
                   sharedDrag={drag}
                   continuations={continuationsByDay[i]}
+                  onLongPress={onLongPress}
                 />
               );
             })}

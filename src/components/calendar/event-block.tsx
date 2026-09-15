@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, type MutableRefObject } from "react";
+import { memo, type MutableRefObject, useRef } from "react";
 import { Lock, MapPin, GripVertical, AlertTriangle } from "lucide-react";
 import type { Calendar, CalendarEvent } from "@/lib/types";
 import {
@@ -33,6 +33,7 @@ interface EventBlockProps {
     e: React.PointerEvent
   ) => void;
   onSelect?: (event: CalendarEvent) => void;
+  onLongPress?: (event: CalendarEvent) => void;
 }
 
 function EventBlockImpl({
@@ -49,9 +50,11 @@ function EventBlockImpl({
   onPointerDown,
   onHandlePointerDown,
   onSelect,
+  onLongPress,
 }: EventBlockProps) {
   const color = eventColor(event, calendarsById);
   const text = contrastText(color);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Use preview times when this event is being dragged or resized.
   const previewStart =
@@ -82,7 +85,34 @@ function EventBlockImpl({
       aria-label={`${event.title}, ${fmtTime(previewStart)} to ${fmtTime(previewEnd)}${
         event.location ? ", at " + event.location : ""
       }`}
-      onPointerDown={(e) => onPointerDown?.(event, e)}
+      onPointerDown={(e) => {
+        // Start a long-press timer (500ms). If the pointer doesn't move, fire
+        // the quick-actions menu. Cancelled on move/up (drag takes over).
+        if (onLongPress && e.pointerType !== "mouse") {
+          longPressTimer.current = setTimeout(() => {
+            onLongPress(event);
+          }, 500);
+        }
+        onPointerDown?.(event, e);
+      }}
+      onPointerMove={() => {
+        if (longPressTimer.current) {
+          clearTimeout(longPressTimer.current);
+          longPressTimer.current = null;
+        }
+      }}
+      onPointerUp={() => {
+        if (longPressTimer.current) {
+          clearTimeout(longPressTimer.current);
+          longPressTimer.current = null;
+        }
+      }}
+      onPointerLeave={() => {
+        if (longPressTimer.current) {
+          clearTimeout(longPressTimer.current);
+          longPressTimer.current = null;
+        }
+      }}
       onClick={(e) => {
         // Skip click after a drag (pointer moved > threshold).
         if (didDragRef?.current) {

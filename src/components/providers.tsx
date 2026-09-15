@@ -28,7 +28,21 @@ export function Providers({ children }: { children: React.ReactNode }) {
     >
       <QueryClientProvider client={client}>
         {children}
-        <Toaster position="top-center" richColors closeButton />
+        {/* Toasts positioned to respect iOS safe areas (notch + home indicator) */}
+        <Toaster
+          position="top-center"
+          richColors
+          closeButton
+          style={{
+            paddingTop: "max(env(safe-area-inset-top), 0px)",
+            paddingBottom: "max(env(safe-area-inset-bottom), 0px)",
+          }}
+          toastOptions={{
+            style: {
+              maxWidth: "calc(100vw - 1rem)",
+            },
+          }}
+        />
       </QueryClientProvider>
     </ThemeProvider>
   );

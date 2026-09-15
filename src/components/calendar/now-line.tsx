@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { HOUR_HEIGHT } from "@/lib/calendar-ui";
+import { useSettings } from "@/lib/settings-store";
 
 // Red current-time line spanning a single day column. Updates every 30s.
 export function NowLine({ dayStartMs }: { dayStartMs: number }) {
+  const hourHeight = useSettings((s) => s.hourHeight) ?? HOUR_HEIGHT;
   const [top, setTop] = useState<number | null>(null);
 
   useEffect(() => {
@@ -17,7 +19,7 @@ export function NowLine({ dayStartMs }: { dayStartMs: number }) {
         now.getDate() === dayStart.getDate()
       ) {
         const mins = now.getHours() * 60 + now.getMinutes();
-        setTop((mins / 60) * HOUR_HEIGHT);
+        setTop((mins / 60) * hourHeight);
       } else {
         setTop(null);
       }
@@ -25,7 +27,7 @@ export function NowLine({ dayStartMs }: { dayStartMs: number }) {
     update();
     const id = setInterval(update, 30_000);
     return () => clearInterval(id);
-  }, [dayStartMs]);
+  }, [dayStartMs, hourHeight]);
 
   if (top === null) return null;
   return (

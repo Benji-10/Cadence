@@ -33,13 +33,10 @@ interface DayColumnProps {
   ) => void;
   onBlockedMove?: (event: CalendarEvent) => void;
   defaultCalendarId?: string;
-  // When provided (by WeekView), use this shared drag instance so the pointer's
-  // X can move the event across days. When omitted (DayView), the column
-  // creates its own vertical-only drag.
   sharedDrag?: ReturnType<typeof useEventDrag>;
-  // Multi-day timed events that continue onto this day (not starting here).
-  // Rendered as a compact "spills over" bar at the top of the column.
   continuations?: CalendarEvent[];
+  onLongPress?: (event: CalendarEvent) => void;
+  hourHeight?: number;
 }
 
 export function DayColumn({
@@ -57,7 +54,10 @@ export function DayColumn({
   defaultCalendarId,
   sharedDrag,
   continuations,
+  onLongPress,
+  hourHeight,
 }: DayColumnProps) {
+  const HH = hourHeight ?? HOUR_HEIGHT;
   const positioned = useMemo(() => layoutEvents(events), [events]);
   const showConflicts = useSettings((s) => s.showConflictBadges);
   const conflictIds = useMemo(
@@ -103,7 +103,7 @@ export function DayColumn({
     if (!onCreate) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const y = e.clientY - rect.top;
-    const mins = Math.max(0, Math.min(23 * 60 + 45, snapMins((y / HOUR_HEIGHT) * 60)));
+    const mins = Math.max(0, Math.min(23 * 60 + 45, snapMins((y / HH) * 60)));
     const start = new Date(day);
     start.setHours(0, 0, 0, 0);
     start.setMinutes(mins);
@@ -123,7 +123,7 @@ export function DayColumn({
         "relative flex-1 border-r border-border last:border-r-0",
         isToday && "bg-accent/30"
       )}
-      style={{ height: 24 * HOUR_HEIGHT }}
+      style={{ height: 24 * HH }}
       onPointerDown={(e) => {
         // Reset the "did drag" flag on every new interaction so the click
         // handler knows whether to open the editor or treat this as a drag.
@@ -137,7 +137,7 @@ export function DayColumn({
         <div
           key={h}
           className="absolute inset-x-0 border-t border-border/60"
-          style={{ top: h * HOUR_HEIGHT }}
+          style={{ top: h * HH }}
         />
       ))}
       {/* Half-hour lines (subtler) */}
@@ -145,7 +145,7 @@ export function DayColumn({
         <div
           key={`half-${h}`}
           className="absolute inset-x-0 border-t border-border/25"
-          style={{ top: h * HOUR_HEIGHT + HOUR_HEIGHT / 2 }}
+          style={{ top: h * HH + HH / 2 }}
         />
       ))}
 
@@ -209,14 +209,14 @@ export function DayColumn({
                 top: (event
                   ? (parseISO(event.start).getHours() * 60 +
                       parseISO(event.start).getMinutes()) / 60
-                  : 0) * HOUR_HEIGHT,
+                  : 0) * HH,
                 height: Math.max(
                   22,
                   ((parseISO(event.end).getTime() -
                     parseISO(event.start).getTime()) /
                     60000 /
                     60) *
-                    HOUR_HEIGHT
+                    HH
                 ),
                 left: `calc(${lane * (100 / lanesInCluster)}% + 2px)`,
                 width: `calc(${100 / lanesInCluster}% - 4px)`,
@@ -241,6 +241,7 @@ export function DayColumn({
               event.flexibility !== "fixed" ? resize.onHandlePointerDown : undefined
             }
             onSelect={onSelect}
+            onLongPress={onLongPress}
           />
         );
       })}

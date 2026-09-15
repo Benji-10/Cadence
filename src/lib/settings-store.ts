@@ -15,6 +15,7 @@ export interface Settings {
   autoScrollToNow: boolean;
   showConflictBadges: boolean;
   defaultEventDurationMins: number;
+  hourHeight: number; // px per hour in day/week grid (pinch-to-zoom adjustable)
   setDefaultCalendarId: (id: string | null) => void;
   setDefaultAlerts: (alerts: number[]) => void;
   setWeekStartsOn: (v: 0 | 1) => void;
@@ -22,6 +23,7 @@ export interface Settings {
   setAutoScrollToNow: (v: boolean) => void;
   setShowConflictBadges: (v: boolean) => void;
   setDefaultEventDurationMins: (v: number) => void;
+  setHourHeight: (v: number) => void;
 }
 
 export const useSettings = create<Settings>()(
@@ -34,6 +36,7 @@ export const useSettings = create<Settings>()(
       autoScrollToNow: true,
       showConflictBadges: true,
       defaultEventDurationMins: 60,
+      hourHeight: 56,
       setDefaultCalendarId: (id) => set({ defaultCalendarId: id }),
       setDefaultAlerts: (alerts) => set({ defaultAlerts: alerts }),
       setWeekStartsOn: (v) => set({ weekStartsOn: v }),
@@ -41,6 +44,7 @@ export const useSettings = create<Settings>()(
       setAutoScrollToNow: (v) => set({ autoScrollToNow: v }),
       setShowConflictBadges: (v) => set({ showConflictBadges: v }),
       setDefaultEventDurationMins: (v) => set({ defaultEventDurationMins: v }),
+      setHourHeight: (v) => set({ hourHeight: v }),
     }),
     { name: "cadence-settings" }
   )

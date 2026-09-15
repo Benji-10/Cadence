@@ -75,6 +75,7 @@ import { useSettings } from "@/lib/settings-store";
 import { useTemplates } from "@/lib/templates-store";
 import { TemplatesBar } from "./templates-bar";
 import { LocationAutocomplete } from "./location-autocomplete";
+import { LocationDrawer } from "./location-drawer";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -308,6 +309,7 @@ function EditForm({
   const [allowOverlap, setAllowOverlap] = useState(initial.allowOverlap);
   const [locationType, setLocationType] = useState<LocationType>(initial.locationType);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [locationDrawerOpen, setLocationDrawerOpen] = useState(false);
 
   const inferred = useMemo(() => inferMetaFromTitle(title), [title]);
   const calendarsById = useMemo(
@@ -742,19 +744,42 @@ function EditForm({
 
         <Separator className="my-2" />
 
-        {/* Location */}
-        <Row
-          label="Location"
-          icon={<MapPin className="size-3.5 text-muted-foreground" />}
-        >
-          <div className="w-[60%]">
-            <LocationAutocomplete
-              value={location}
-              onChange={setLocation}
-              placeholder="Search a place…"
-            />
-          </div>
-        </Row>
+        {/* Location — full-width on mobile (opens a bottom-sheet drawer), inline autocomplete on desktop */}
+        <div className="sm:hidden">
+          <label className="mb-1 flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+            <MapPin className="size-3" />
+            Location
+          </label>
+          <button
+            onClick={() => setLocationDrawerOpen(true)}
+            className="flex w-full items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-left text-sm"
+          >
+            <MapPin className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className={cn("flex-1 truncate", !location && "text-muted-foreground")}>
+              {location || "Search a place or type…"}
+            </span>
+          </button>
+          <LocationDrawer
+            open={locationDrawerOpen}
+            onOpenChange={setLocationDrawerOpen}
+            value={location}
+            onChange={setLocation}
+          />
+        </div>
+        <div className="hidden sm:contents">
+          <Row
+            label="Location"
+            icon={<MapPin className="size-3.5 text-muted-foreground" />}
+          >
+            <div className="w-[60%]">
+              <LocationAutocomplete
+                value={location}
+                onChange={setLocation}
+                placeholder="Search a place…"
+              />
+            </div>
+          </Row>
+        </div>
 
         <Row label="Travel time (min)">
           <Input

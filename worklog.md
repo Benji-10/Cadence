@@ -541,3 +541,36 @@ TECHNICAL:
 - Split persistence, auth, occurrence exceptions still open (long-standing).
 - The mobile Week view is hidden but not replaced with an iOS-style "day strip + single day" view — the Day view with prev/next chevrons serves that role for now.
 - Next rounds: split persistence, auth, occurrence exceptions.
+
+---
+Task ID: 19 (user feedback round 5 — toasts, location drawer, swipe, long-press, pinch)
+Agent: main
+Task: Fix toast visibility, location overflow, add swipe nav, long-press quick-actions, pinch-to-zoom.
+
+## Current project status / assessment
+- App stable. Major mobile UX overhaul: toasts respect safe areas, location picker is a full drawer, swipe navigates days, long-press shows quick actions, pinch zooms the grid.
+
+## Completed modifications / verification results
+1. **Toast notifications respect safe areas** (`providers.tsx`). The Sonner Toaster now has `paddingTop: env(safe-area-inset-top)` and `paddingBottom: env(safe-area-inset-bottom)` so toasts appear below the notch and above the home indicator. Also capped `maxWidth: calc(100vw - 1rem)` so they don't overflow on mobile.
+
+2. **Location drawer** (`location-drawer.tsx`). On mobile, the cramped inline location input is replaced by a button showing the current value; tapping it opens a bottom-sheet drawer (`Sheet side="bottom"`) with a full-width search input + OpenStreetMap Nominatim autocomplete + Cancel/Done buttons. The drawer has `safe-bottom` padding. Desktop keeps the inline autocomplete. VERIFIED: typing "Library" returned full results without overflow.
+
+3. **Swipe to navigate days** (`use-swipe.ts` hook + DayView). Horizontal swipe (threshold 60px) on the day grid navigates to the next/prev day — swipe left = next day, swipe right = prev day (like flipping calendar pages). Only triggers on clearly horizontal movement so vertical scrolling isn't affected.
+
+4. **Long-press quick actions** (`event-block.tsx` + `quick-actions.tsx`). Long-pressing an event (500ms) opens a popover with Edit, Move, Duplicate, and Delete actions. The timer is cancelled on pointer move (so drag takes over) or pointer up. Wired through DayColumn → WeekView/DayView → calendar-app. Delete and Duplicate use the real (stripped) event ID.
+
+5. **Pinch-to-zoom** (`use-pinch-zoom.ts` + `settings.hourHeight`). Two-finger pinch on the day grid adjusts the hour height (28–140px range), persisted to settings. The TimeAxis, DayColumn, NowLine, and EventBlock all read the dynamic `hourHeight` so the whole grid scales together. This changes the compactness of the day without moving event blocks.
+
+6. **Dynamic hour height** (`settings-store.ts`). Added `hourHeight` to the settings store (default 56px, the old constant). All components that used the static `HOUR_HEIGHT` now read from settings (with the constant as fallback). Pinch-to-zoom and a future Settings slider can adjust it.
+
+TECHNICAL:
+- `useSwipe` returns `{ onTouchStart, onTouchEnd }` handlers spread onto the scroll container; uses refs (via useEffect) to avoid the react-hooks/refs lint rule.
+- `usePinchZoom` returns touch handlers; `onTouchMove` calls `e.preventDefault()` to suppress browser pinch-zoom.
+- The EventBlock's `onPointerDown` starts a 500ms long-press timer; `onPointerMove`/`onPointerUp`/`onPointerLeave` cancel it.
+- `bun run lint` clean. No runtime errors across all 5 views on mobile (375px) and desktop (1280px).
+
+## Unresolved issues / risks + next-phase recommendations
+- Repeating events still edit the parent (occurrence exceptions not yet implemented).
+- The iOS scroll-wheel time picker is not available (HTML select is used instead — the user acknowledged this is acceptable).
+- Pinch-to-zoom is wired into DayView only; WeekView could get it too.
+- Next rounds: occurrence exceptions, WeekView pinch, split persistence.

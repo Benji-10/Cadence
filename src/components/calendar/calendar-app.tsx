@@ -19,6 +19,8 @@ import type { CalendarEvent, ReorderResult } from "@/lib/types";
 import {
   useBootstrap,
   useCalendars,
+  useCreateEvent,
+  useDeleteEvent,
   useEvents,
   useReorder,
   useReseed,
@@ -41,6 +43,7 @@ import { InsightsDialog } from "./insights-dialog";
 import { ImportDialog } from "./import-dialog";
 import { SettingsDialog } from "./settings-dialog";
 import { FreeSlotDialog } from "./free-slot-dialog";
+import { QuickActions } from "./quick-actions";
 import { YearView } from "./year-view";
 import {
   CalendarVisibilityContext,
@@ -80,6 +83,7 @@ export function CalendarApp() {
   const [importOpen, setImportOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [freeSlotOpen, setFreeSlotOpen] = useState(false);
+  const [quickActionEvent, setQuickActionEvent] = useState<CalendarEvent | null>(null);
 
   // Edit sheet + reorder preview
   const [editState, setEditState] = useState<EditSheetState | null>(null);
@@ -105,6 +109,8 @@ export function CalendarApp() {
   const updateMut = useUpdateEvent();
   const reorderMut = useReorder();
   const reseedMut = useReseed();
+  const deleteMut = useDeleteEvent();
+  const createMut = useCreateEvent();
 
   // Visible range. Week/day views fetch the current week; month view fetches
   // the whole month grid (with leading/trailing days) so its cells are populated.
@@ -690,6 +696,7 @@ export function CalendarApp() {
               onBlockedMove={handleBlockedMove}
               defaultCalendarId={defaultCalendarId}
               scrollContainerRef={scrollRef}
+              onLongPress={setQuickActionEvent}
             />
           ) : view === "month" ? (
             <MonthView
@@ -736,6 +743,7 @@ export function CalendarApp() {
               scrollContainerRef={scrollRef}
               onPrevDay={() => setSelectedDay((d) => addDays(d, -1))}
               onNextDay={() => setSelectedDay((d) => addDays(d, 1))}
+              onLongPress={setQuickActionEvent}
             />
           )}
           </main>
@@ -849,6 +857,35 @@ export function CalendarApp() {
               defaults: { start, end, calendarId: defaultCalendarId },
             });
             setEditOpen(true);
+          }}
+        />
+
+        {/* Quick actions popover (long-press an event on mobile) */}
+        <QuickActions
+          event={quickActionEvent}
+          open={!!quickActionEvent}
+          onOpenChange={(v) => !v && setQuickActionEvent(null)}
+          onEdit={(ev) => handleSelect(ev)}
+          onDelete={(ev) => {
+            const realId = ev.id.split("#")[0];
+            deleteMut.mutateAsync(realId).then(() => toast.success("Deleted"));
+          }}
+          onDuplicate={(ev) => {
+            // Duplicate one day later
+            const startMs = parseISO(ev.start).getTime();
+            const dur = parseISO(ev.end).getTime() - startMs;
+            const newStart = new Date(startMs + 24 * 60 * 60 * 1000);
+            createMut.mutateAsync({
+              title: ev.title,
+              start: newStart.toISOString(),
+              end: new Date(newStart.getTime() + dur).toISOString(),
+              allDay: ev.allDay,
+              calendarId: ev.calendarId,
+              alerts: ev.alerts,
+            }).then(() => toast.success("Duplicated"));
+          }}
+          onMoveMode={() => {
+            toast.info("Drag the event to move it.");
           }}
         />
       </div>

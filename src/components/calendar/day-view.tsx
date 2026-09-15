@@ -6,6 +6,9 @@ import type { Calendar, CalendarEvent } from "@/lib/types";
 import { DayColumn } from "./day-column";
 import { TimeAxis } from "./time-axis";
 import { HOUR_HEIGHT } from "@/lib/calendar-ui";
+import { useSwipe } from "@/hooks/use-swipe";
+import { usePinchZoom } from "@/hooks/use-pinch-zoom";
+import { useSettings } from "@/lib/settings-store";
 import { cn } from "@/lib/utils";
 
 interface DayViewProps {
@@ -31,6 +34,7 @@ interface DayViewProps {
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
   onPrevDay?: () => void;
   onNextDay?: () => void;
+  onLongPress?: (event: CalendarEvent) => void;
 }
 
 export function DayView({
@@ -48,8 +52,16 @@ export function DayView({
   scrollContainerRef,
   onPrevDay,
   onNextDay,
+  onLongPress,
 }: DayViewProps) {
   const today = new Date();
+  const hourHeight = useSettings((s) => s.hourHeight);
+  const setHourHeight = useSettings((s) => s.setHourHeight);
+  const pinch = usePinchZoom({
+    onZoom: (scale) => {
+      setHourHeight(Math.max(28, Math.min(140, Math.round(hourHeight * scale))));
+    },
+  });
   const allDayEvents = useMemo(
     () =>
       events.filter(
@@ -84,6 +96,15 @@ export function DayView({
       isSameDay(parseISO(e.start), day) &&
       !hiddenCalendarIds.has(e.calendarId)
   );
+
+  // Swipe to navigate days on mobile. Swipe left = next day, swipe right = prev day
+  // (like flipping calendar pages). Threshold is high enough to not conflict
+  // with horizontal scrolling.
+  const swipe = useSwipe({
+    onSwipeLeft: onNextDay ? () => onNextDay() : undefined,
+    onSwipeRight: onPrevDay ? () => onPrevDay() : undefined,
+    threshold: 60,
+  });
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -198,6 +219,9 @@ export function DayView({
         ref={scrollContainerRef}
         className="cal-scroll min-h-0 flex-1 overflow-auto"
         style={{ overscrollBehaviorY: "none" }}
+        onTouchStart={swipe.onTouchStart}
+        onTouchEnd={swipe.onTouchEnd}
+        onTouchMove={pinch.onTouchMove}
       >
         <div className="flex min-w-max">
           <TimeAxis />
@@ -214,11 +238,13 @@ export function DayView({
               onResizeEvent={onResizeEvent}
               onBlockedMove={onBlockedMove}
               defaultCalendarId={defaultCalendarId}
+              onLongPress={onLongPress}
+              hourHeight={hourHeight}
               compact
             />
           </div>
         </div>
-        <div style={{ height: HOUR_HEIGHT * 2 }} />
+        <div style={{ height: hourHeight * 2 }} />
       </div>
     </div>
   );
