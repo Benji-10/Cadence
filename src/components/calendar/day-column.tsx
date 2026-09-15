@@ -7,6 +7,7 @@ import { EventBlock } from "./event-block";
 import { NowLine } from "./now-line";
 import { useEventDrag } from "@/hooks/use-event-drag";
 import { useEventResize } from "@/hooks/use-event-resize";
+import { useCreateDrag } from "@/hooks/use-create-drag";
 import { cn } from "@/lib/utils";
 
 interface DayColumnProps {
@@ -58,10 +59,25 @@ export function DayColumn({
       onResizeEvent?.(event, newStart, newEnd),
   });
 
+  // Drag-to-create in empty column space.
+  const createDrag = useCreateDrag({
+    onCreate: (d) => onCreate?.(d),
+    rangeFromMins: (startMins, endMins) => {
+      const start = new Date(day);
+      start.setHours(0, 0, 0, 0);
+      start.setMinutes(startMins);
+      const end = new Date(day);
+      end.setHours(0, 0, 0, 0);
+      end.setMinutes(endMins);
+      return { start: start.toISOString(), end: end.toISOString() };
+    },
+  });
+
   const dayStartMs = day.getTime();
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (drag.didDragRef.current) return;
+    if (createDrag.consumeMoved()) return;
     if (!onCreate) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const y = e.clientY - rect.top;
@@ -86,10 +102,11 @@ export function DayColumn({
         isToday && "bg-accent/30"
       )}
       style={{ height: 24 * HOUR_HEIGHT }}
-      onPointerDown={() => {
+      onPointerDown={(e) => {
         // Reset the "did drag" flag on every new interaction so the click
         // handler knows whether to open the editor or treat this as a drag.
         drag.resetDrag();
+        createDrag.onPointerDown(e);
       }}
       onClick={handleClick}
     >
@@ -109,6 +126,17 @@ export function DayColumn({
           style={{ top: h * HOUR_HEIGHT + HOUR_HEIGHT / 2 }}
         />
       ))}
+
+      {/* Drag-to-create preview */}
+      {createDrag.preview && (
+        <div
+          className="pointer-events-none absolute inset-x-1 z-20 rounded-md border-2 border-dashed border-emerald-500/70 bg-emerald-500/15"
+          style={{
+            top: Math.min(createDrag.preview.startY, createDrag.preview.endY),
+            height: Math.abs(createDrag.preview.endY - createDrag.preview.startY),
+          }}
+        />
+      )}
 
       {/* Events */}
       {positioned.map(({ event, lane, lanesInCluster }) => (

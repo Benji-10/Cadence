@@ -129,6 +129,16 @@ export function useSuggest() {
   });
 }
 
+// ---- Search ---------------------------------------------------------------
+export function useSearchEvents(q: string) {
+  return useQuery<{ events: CalendarEvent[] }>({
+    queryKey: ["events", "search", q],
+    queryFn: () => api.searchEvents(q),
+    enabled: q.trim().length > 0,
+    staleTime: 10_000,
+  });
+}
+
 // ---- Reseed ---------------------------------------------------------------
 export function useReseed() {
   const qc = useQueryClient();

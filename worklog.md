@@ -81,3 +81,38 @@ Stage Summary — verified by main with agent-browser (all passing):
 - Sticky footer shows "Next: Paid work in 2h 25m".
 - `bun run lint` clean. No console/runtime errors.
 - Limitations noted for future enhancement: (1) drag is vertical/time-only within a day (cross-day drag via edit-sheet date picker instead); (2) when a bumped task's full duration doesn't fit one slot, only the first chunk is persisted (the rest are surfaced as a toast note).
+
+---
+Task ID: 5 (15-min webDevReview round 1)
+Agent: main (webDevReview)
+Task: QA pass + add features (month view, search palette, keyboard shortcuts, drag-to-create) + styling polish.
+
+## Current project status / assessment
+- App is stable and bug-free. agent-browser QA found NO runtime/console errors. Verified: week view, edit sheet, live category inference, auto-optimize, theme toggle, calendars popover, mobile (375px), sticky footer all still pass.
+- Foundation (schema, scheduler engine, API, PWA, notifications) unchanged and intact.
+
+## Completed modifications / verification results
+NEW FEATURES:
+1. Month view (`src/components/calendar/month-view.tsx`): 6×7 day grid, weekday header, per-cell day number + event count + up to 3 colored chips + "+N more" overflow, today ring, weekend tint, out-of-month greyed cells. Click a day → drills into Day view on that date. Click a chip → edit sheet. Added "Month" segment to the toolbar toggle. Verified: renders the full seeded month with event chips and counts.
+2. Event search + command palette (`src/components/calendar/search-palette.tsx` + `GET /api/events/search?q=`): Cmd/Ctrl+K or `/` opens a dialog that searches all events by title (LIKE query), groups results into Upcoming/Past, shows relative time ("in 3d", "2h ago"), calendar color dot, date + location. Arrow keys + Enter to navigate; selecting jumps to Day view on that date and opens the event in the edit sheet. Verified: searching "laundry" returned both Laundry events; clicking a result jumped to Fri 18 Sep + opened the editor.
+3. Keyboard shortcuts (`src/components/calendar/shortcuts-dialog.tsx`): `t` today, `j`/`←` prev, `k`/`→` next, `d`/`w`/`m` switch views, `n` new event, `?` show help. Help dialog reachable from the More menu too. Verified: `?` opens help; `w`/`m` switch views.
+4. Drag-to-create (`src/hooks/use-create-drag.ts` wired into day-column): press-and-drag in empty day-column space sketches a dashed emerald preview rectangle snapped to 15min; release opens the create sheet with the dragged time range. A pure tap still falls back to a default 1h slot. Verified: dragging in the empty 00:00–01:00 gap opened the create sheet pre-filled 00:00–01:00 Mon 14 Sep.
+
+STYLING POLISH:
+- Event blocks: gradient overlay + inset top highlight + lift-on-hover (`-translate-y-0.5`, shadow-lg), stronger selected ring + colored glow.
+- Now line: pulsing ping dot, gradient red line fading to 40%, and a live clock badge.
+- Toolbar: search button with ⌘K hint, 3-way Day/Week/Month segmented toggle, responsive compact date label for small screens, keyboard-shortcuts entry in More menu.
+- Month view: tinted weekends, today emerald ring, hover lift, chip count badge.
+
+TECHNICAL:
+- Added `GET /api/events/search` route + `api.searchEvents` + `useSearchEvents` react-query hook.
+- calendar-app: view type now `day|week|month`; range computation branches (month fetches the full 6-week grid); nav handlers handle month; keyboard shortcuts effect; jump-to-event handler; render month-view + search palette + shortcuts dialog.
+- Lint clean (resolved a react-hooks/immutability rule by exposing `consumeMoved()` from the create-drag hook instead of mutating the returned ref).
+
+## Unresolved issues / risks + next-phase recommendations
+- Cross-day drag still not supported (drag is vertical/time-only within a column). Next phase: lift drag state to the WeekView so the pointer's X determines the target day.
+- When a bumped task's full duration doesn't fit one slot, only the first chunk is persisted; the rest are surfaced as a toast note. Next phase: have `rescheduleAround` return all placements and persist extra chunks as new events (needs a bulk-create API).
+- Netlify Identity auth gating for production is still open (widget script is in layout; no server-side session gating yet). Next phase: add a NextAuth/Netlify Identity callback + protect event routes by user, scoping calendars/events by userId.
+- Month view multi-day event spanning is approximate (crude loop). Could be tightened with proper interval math.
+- No month-view drag/resize (month is overview-only by design, like iOS).
+- The cron job is set to continue every 15 min; next rounds should pick up cross-day drag + split persistence + auth.

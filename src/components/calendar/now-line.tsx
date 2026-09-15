@@ -34,8 +34,13 @@ export function NowLine({ dayStartMs }: { dayStartMs: number }) {
       style={{ top }}
       aria-hidden
     >
-      <span className="relative -left-[5px] h-[10px] w-[10px] rounded-full bg-red-500 shadow-[0_0_0_3px_rgba(239,68,68,0.18)]" />
-      <div className="h-[2px] flex-1 bg-red-500" />
+      <span className="relative -left-[5px] flex h-[10px] w-[10px] items-center justify-center rounded-full bg-red-500 shadow-[0_0_0_3px_rgba(239,68,68,0.18)]">
+        <span className="absolute size-[10px] animate-ping rounded-full bg-red-500/60" />
+      </span>
+      <div className="h-[2px] flex-1 bg-gradient-to-r from-red-500 to-red-500/40" />
+      <span className="hidden -ml-1 rounded-sm bg-red-500 px-1 text-[9px] font-semibold text-white sm:inline">
+        {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+      </span>
     </div>
   );
 }

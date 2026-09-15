@@ -99,8 +99,9 @@ function EventBlockImpl({
         }
       }}
       className={cn(
-        "group absolute z-10 cursor-grab touch-none select-none rounded-md text-left",
-        "transition-shadow hover:z-20 hover:shadow-md active:cursor-grabbing",
+        "group absolute z-10 cursor-grab touch-none select-none overflow-hidden rounded-md text-left",
+        "transition-[box-shadow,transform] duration-150 hover:z-20 hover:shadow-lg active:cursor-grabbing",
+        "hover:-translate-y-0.5",
         selected && "ring-2 ring-offset-1 ring-offset-background",
         isGhost && "opacity-60 ring-2 ring-dashed"
       )}
@@ -110,10 +111,11 @@ function EventBlockImpl({
         left: `calc(${leftPct}% + 2px)`,
         width: `calc(${widthPct}% - 4px)`,
         backgroundColor: hexToRgba(color, 0.92),
+        backgroundImage: `linear-gradient(180deg, ${hexToRgba(color, 0.18)} 0%, transparent 60%)`,
         color: text,
         boxShadow: selected
-          ? `0 0 0 2px ${color}, 0 4px 14px ${hexToRgba(color, 0.35)}`
-          : `0 1px 3px ${hexToRgba(color, 0.25)}`,
+          ? `0 0 0 2px ${color}, 0 6px 18px ${hexToRgba(color, 0.4)}`
+          : `0 1px 2px ${hexToRgba(color, 0.3)}, inset 0 1px 0 ${hexToRgba("#ffffff", 0.18)}`,
       }}
     >
       {/* left color bar — always shown */}

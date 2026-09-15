@@ -28,6 +28,11 @@ export const api = {
   deleteEvent: (id: string) =>
     jfetch<{ ok: true }>(`/api/events/${id}`, { method: "DELETE" }),
 
+  searchEvents: (q: string, limit = 30) =>
+    jfetch<{ events: CalendarEvent[] }>(
+      `/api/events/search?q=${encodeURIComponent(q)}&limit=${limit}`
+    ),
+
   reorder: (body: {
     mode: "week" | "around";
     rangeStart: string;

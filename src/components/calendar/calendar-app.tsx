@@ -4,10 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addDays,
   addWeeks,
+  addMonths,
   differenceInMinutes,
+  endOfMonth,
   format,
   parseISO,
   startOfDay,
+  startOfMonth,
+  startOfWeek,
+  endOfWeek,
 } from "date-fns";
 import { toast } from "sonner";
 import type { CalendarEvent, ReorderResult } from "@/lib/types";
@@ -25,15 +30,18 @@ import { startOfWeek as startOfWeekMonday } from "@/lib/scheduler/time";
 import { Toolbar } from "./toolbar";
 import { WeekView } from "./week-view";
 import { DayView } from "./day-view";
+import { MonthView } from "./month-view";
 import { EditSheet, type EditSheetState } from "./edit-sheet";
 import { ReorderPreview } from "./reorder-preview";
+import { SearchPalette } from "./search-palette";
+import { ShortcutsDialog } from "./shortcuts-dialog";
 import {
   CalendarVisibilityContext,
   type VisibilityCtx,
 } from "./visibility-context";
 import { HOUR_HEIGHT } from "@/lib/calendar-ui";
 
-type View = "day" | "week";
+type View = "day" | "week" | "month";
 
 export function CalendarApp() {
   // View state
@@ -44,6 +52,11 @@ export function CalendarApp() {
   const [selectedDay, setSelectedDay] = useState<Date>(() =>
     startOfDay(new Date())
   );
+  const [monthDate, setMonthDate] = useState<Date>(() =>
+    startOfMonth(new Date())
+  );
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   // Edit sheet + reorder preview
   const [editState, setEditState] = useState<EditSheetState | null>(null);
@@ -70,13 +83,19 @@ export function CalendarApp() {
   const reorderMut = useReorder();
   const reseedMut = useReseed();
 
-  // Visible range = current week (Mon 00:00 → next Mon 00:00). We fetch the
-  // whole week even in day view so reorder/next-event has full context.
+  // Visible range. Week/day views fetch the current week; month view fetches
+  // the whole month grid (with leading/trailing days) so its cells are populated.
   const range = useMemo(() => {
+    if (view === "month") {
+      const mStart = startOfMonth(monthDate);
+      const from = startOfWeek(mStart, { weekStartsOn: 1 });
+      const to = endOfWeek(endOfMonth(monthDate), { weekStartsOn: 1 });
+      return { from: from.toISOString(), to: addDays(to, 1).toISOString() };
+    }
     const from = weekStart.toISOString();
     const to = addWeeks(weekStart, 1).toISOString();
     return { from, to };
-  }, [weekStart]);
+  }, [view, weekStart, monthDate]);
 
   const eventsQ = useEvents(range);
   const events: CalendarEvent[] = eventsQ.data?.events ?? [];
@@ -119,14 +138,15 @@ export function CalendarApp() {
     });
   }, [calendars]);
 
-  // Auto-scroll to ~current time on first load / view switch.
+  // Auto-scroll to ~current time on first load / view switch (week/day only).
   useEffect(() => {
+    if (view === "month") return;
     if (!scrollRef.current) return;
     const now = new Date();
     const mins = now.getHours() * 60 + now.getMinutes();
     const top = Math.max(0, (mins / 60) * HOUR_HEIGHT - 120);
     scrollRef.current.scrollTop = top;
-  }, [view, weekStart]);
+  }, [view, weekStart, monthDate]);
 
   // ---- Notifications wiring ----
   useEffect(() => {
@@ -170,16 +190,19 @@ export function CalendarApp() {
   // ---- Toolbar callbacks ----
   const handlePrev = () => {
     if (view === "week") setWeekStart((d) => addWeeks(d, -1));
+    else if (view === "month") setMonthDate((d) => addMonths(d, -1));
     else setSelectedDay((d) => addDays(d, -1));
   };
   const handleNext = () => {
     if (view === "week") setWeekStart((d) => addWeeks(d, 1));
+    else if (view === "month") setMonthDate((d) => addMonths(d, 1));
     else setSelectedDay((d) => addDays(d, 1));
   };
   const handleToday = () => {
     const now = new Date();
     setWeekStart(new Date(startOfWeekMonday(now.toISOString())));
     setSelectedDay(startOfDay(now));
+    setMonthDate(startOfMonth(now));
   };
 
   const handleViewChange = (v: View) => {
@@ -189,6 +212,14 @@ export function CalendarApp() {
         parseISO(range.from) <= selectedDay && selectedDay < parseISO(range.to);
       if (!inWeek) setSelectedDay(startOfDay(new Date()));
     }
+    if (v === "month") setMonthDate(startOfMonth(selectedDay));
+  };
+
+  // Pick a day from the month grid → drill into Day view on that date.
+  const handlePickDay = (day: Date) => {
+    setSelectedDay(startOfDay(day));
+    setWeekStart(new Date(startOfWeekMonday(day.toISOString())));
+    setView("day");
   };
 
   const handleReseed = async () => {
@@ -277,6 +308,90 @@ export function CalendarApp() {
     toast.error(`Can't move "${event.title}" — it's a fixed event.`);
   }, []);
 
+  // Jump to an event from the search palette: switch to Day view on its date
+  // and open the edit sheet so the user lands right on it.
+  const handleJumpToEvent = useCallback((event: CalendarEvent) => {
+    const start = parseISO(event.start);
+    setSelectedDay(startOfDay(start));
+    setWeekStart(new Date(startOfWeekMonday(start.toISOString())));
+    setMonthDate(startOfMonth(start));
+    setView("day");
+    setEditState({ mode: "edit", event });
+    setEditOpen(true);
+  }, []);
+
+  // ---- Keyboard shortcuts ----
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Ignore when typing in an input/textarea/contenteditable.
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || t?.isContentEditable) {
+        // still allow Cmd/Ctrl+K for search from anywhere
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+          e.preventDefault();
+          setSearchOpen(true);
+        }
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+        return;
+      }
+      if (e.key === "/") {
+        e.preventDefault();
+        setSearchOpen(true);
+        return;
+      }
+      if (e.key === "?") {
+        e.preventDefault();
+        setShortcutsOpen(true);
+        return;
+      }
+      switch (e.key.toLowerCase()) {
+        case "t":
+          handleToday();
+          break;
+        case "j":
+        case "arrowleft":
+          handlePrev();
+          break;
+        case "k":
+        case "arrowright":
+          handleNext();
+          break;
+        case "d":
+          setView("day");
+          break;
+        case "w":
+          setView("week");
+          break;
+        case "m":
+          setView("month");
+          break;
+        case "n": {
+          const now = new Date();
+          const start = new Date(now);
+          start.setMinutes(0, 0, 0);
+          const end = new Date(start.getTime() + 60 * 60_000);
+          setEditState({
+            mode: "create",
+            defaults: {
+              start: start.toISOString(),
+              end: end.toISOString(),
+              calendarId: defaultCalendarId,
+            },
+          });
+          setEditOpen(true);
+          break;
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [defaultCalendarId]); // handlers are stable enough; re-binding on defaultCalendarId change is fine
+
   // ---- Resize ----
   const handleResize = useCallback(
     async (event: CalendarEvent, newStart: string, newEnd: string) => {
@@ -339,7 +454,8 @@ export function CalendarApp() {
     [visibility]
   );
 
-  const visibleDate = view === "week" ? weekStart : selectedDay;
+  const visibleDate =
+    view === "week" ? weekStart : view === "month" ? monthDate : selectedDay;
 
   return (
     <CalendarVisibilityContext.Provider value={visibilityCtx}>
@@ -355,6 +471,8 @@ export function CalendarApp() {
           onReseed={handleReseed}
           notificationPermission={notifPerm}
           onEnableNotifications={handleEnableNotifications}
+          onOpenSearch={() => setSearchOpen(true)}
+          onOpenShortcuts={() => setShortcutsOpen(true)}
         />
 
         <main className="min-h-0 flex-1 overflow-hidden">
@@ -374,6 +492,17 @@ export function CalendarApp() {
               onBlockedMove={handleBlockedMove}
               defaultCalendarId={defaultCalendarId}
               scrollContainerRef={scrollRef}
+            />
+          ) : view === "month" ? (
+            <MonthView
+              monthDate={monthDate}
+              events={events}
+              calendarsById={calendarsById}
+              hiddenCalendarIds={hiddenCalendarIds}
+              onSelect={handleSelect}
+              onCreate={handleCreate}
+              onPickDay={handlePickDay}
+              defaultCalendarId={defaultCalendarId}
             />
           ) : (
             <DayView
@@ -410,6 +539,8 @@ export function CalendarApp() {
             <span className="hidden sm:inline">
               {view === "week"
                 ? `Week of ${format(weekStart, "d MMM")}`
+                : view === "month"
+                ? format(monthDate, "MMMM yyyy")
                 : format(selectedDay, "EEE d MMM")}
             </span>
             <span className="flex items-center gap-1">
@@ -454,6 +585,17 @@ export function CalendarApp() {
           events={events}
           loading={reorderLoading}
         />
+
+        {/* Search command palette (Cmd/Ctrl+K or /) */}
+        <SearchPalette
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+          calendarsById={calendarsById}
+          onSelect={handleJumpToEvent}
+        />
+
+        {/* Keyboard shortcuts help (? or via More menu) */}
+        <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       </div>
     </CalendarVisibilityContext.Provider>
   );

@@ -11,9 +11,11 @@ import {
   MoreHorizontal,
   Plus,
   RefreshCw,
+  Search,
   Sparkles,
   Sun,
   Moon,
+  Keyboard,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -34,8 +36,8 @@ import { cn } from "@/lib/utils";
 
 interface ToolbarProps {
   visibleDate: Date;
-  view: "day" | "week";
-  onViewChange: (v: "day" | "week") => void;
+  view: "day" | "week" | "month";
+  onViewChange: (v: "day" | "week" | "month") => void;
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
@@ -43,6 +45,8 @@ interface ToolbarProps {
   onReseed: () => void;
   notificationPermission?: NotificationPermission | "unsupported";
   onEnableNotifications: () => void;
+  onOpenSearch: () => void;
+  onOpenShortcuts: () => void;
 }
 
 export function Toolbar({
@@ -56,6 +60,8 @@ export function Toolbar({
   onReseed,
   notificationPermission,
   onEnableNotifications,
+  onOpenSearch,
+  onOpenShortcuts,
 }: ToolbarProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const [calendarsOpen, setCalendarsOpen] = useState(false);
@@ -88,22 +94,46 @@ export function Toolbar({
           <Button variant="ghost" size="icon" onClick={onNext} aria-label="Next">
             <ChevronRight className="size-5" />
           </Button>
-          <div className="ml-1 min-w-[140px] text-center text-sm font-semibold sm:min-w-[200px] sm:text-base">
+          <div className="ml-1 hidden min-w-[140px] text-center text-sm font-semibold sm:min-w-[200px] sm:text-base md:block">
             {view === "week"
               ? format(visibleDate, "MMM yyyy")
+              : view === "month"
+              ? format(visibleDate, "MMMM yyyy")
               : format(visibleDate, "MMM d, yyyy")}
+          </div>
+          {/* Compact label for small screens */}
+          <div className="ml-1 min-w-[110px] text-center text-sm font-semibold sm:hidden">
+            {view === "week"
+              ? format(visibleDate, "MMM yyyy")
+              : view === "month"
+              ? format(visibleDate, "MMM yyyy")
+              : format(visibleDate, "MMM d")}
           </div>
         </div>
 
         {/* Right actions */}
         <div className="flex items-center gap-1 sm:gap-2">
-          {/* Day/Week segmented toggle */}
+          {/* Search (cmd-k) */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onOpenSearch}
+            aria-label="Search events"
+            title="Search (⌘K)"
+          >
+            <Search className="size-4" />
+          </Button>
+
+          {/* Day/Week/Month segmented toggle */}
           <div className="flex items-center rounded-md border border-border bg-muted/40 p-0.5">
             <SegBtn active={view === "day"} onClick={() => onViewChange("day")}>
               Day
             </SegBtn>
             <SegBtn active={view === "week"} onClick={() => onViewChange("week")}>
               Week
+            </SegBtn>
+            <SegBtn active={view === "month"} onClick={() => onViewChange("month")}>
+              Month
             </SegBtn>
           </div>
 
@@ -180,6 +210,10 @@ export function Toolbar({
               <DropdownMenuItem onClick={onReseed}>
                 <RefreshCw className="size-4" />
                 Reset to sample schedule
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onOpenShortcuts}>
+                <Keyboard className="size-4" />
+                Keyboard shortcuts
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
