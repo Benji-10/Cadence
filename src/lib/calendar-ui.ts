@@ -204,6 +204,8 @@ export function splitOvernightEvents(events: CalendarEvent[]): CalendarEvent[] {
 
 // Detect pairs of events that overlap in time (and aren't allowed-overlap
 // pairs like laundry+work). Returns a Set of event IDs that are in conflict.
+// An event with allowOverlap=true (e.g. laundry) is NOT in conflict with
+// any event whose locationType matches or is "any" — it can coexist.
 export function conflictingEventIds(events: CalendarEvent[]): Set<string> {
   const ids = new Set<string>();
   // sort by start
@@ -216,8 +218,19 @@ export function conflictingEventIds(events: CalendarEvent[]): Set<string> {
       const b = sorted[j];
       // once b starts at/after a ends, no further overlaps for this i
       if (parseISO(b.start).getTime() >= parseISO(a.end).getTime()) break;
-      // allowed-overlap pairs (e.g. laundry + work) are not conflicts
-      if (a.allowOverlap && b.allowOverlap) continue;
+      // allowed-overlap pairs:
+      //  - both allow overlap (laundry + work)
+      //  - one allows overlap AND they share a compatible location
+      //    (laundry at home can overlap any home event)
+      const aCanOverlap = a.allowOverlap;
+      const bCanOverlap = b.allowOverlap;
+      const sameLocation =
+        a.locationType === b.locationType ||
+        a.locationType === "any" ||
+        b.locationType === "any";
+      if (aCanOverlap && bCanOverlap) continue;
+      if (aCanOverlap && sameLocation) continue;
+      if (bCanOverlap && sameLocation) continue;
       ids.add(a.id);
       ids.add(b.id);
     }

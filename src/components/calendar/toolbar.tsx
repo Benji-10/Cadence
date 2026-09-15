@@ -21,6 +21,7 @@ import {
   BarChart3,
   Settings,
   CalendarSearch,
+  Undo2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,8 @@ interface ToolbarProps {
   onOpenImport: () => void;
   onOpenSettings: () => void;
   onOpenFreeSlot: () => void;
+  onUndo: () => void;
+  canUndo: boolean;
 }
 
 export function Toolbar({
@@ -75,6 +78,8 @@ export function Toolbar({
   onOpenImport,
   onOpenSettings,
   onOpenFreeSlot,
+  onUndo,
+  canUndo,
 }: ToolbarProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const [calendarsOpen, setCalendarsOpen] = useState(false);
@@ -127,6 +132,19 @@ export function Toolbar({
 
         {/* Right actions */}
         <div className="flex items-center gap-1 sm:gap-2">
+          {/* Undo */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onUndo}
+            aria-label="Undo"
+            title="Undo (last action)"
+            disabled={!canUndo}
+            className={!canUndo ? "opacity-40" : ""}
+          >
+            <Undo2 className="size-4" />
+          </Button>
+
           {/* Search (cmd-k) — hidden on mobile, accessible via More menu */}
           <Button
             variant="ghost"

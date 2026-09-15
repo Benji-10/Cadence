@@ -459,3 +459,32 @@ TECHNICAL:
 - Nominatim rate limits (1 req/sec) could be hit on fast typing; the 400ms debounce handles this.
 - The overnight split is view-side only; the API still stores the original span. Editing a split chunk edits the parent (correct behavior).
 - Next rounds: split persistence, auth, occurrence exceptions.
+
+---
+Task ID: 16 (user feedback round 2 — time axis, undo, overlap, drag)
+Agent: main
+Task: Fix time-axis misalignment, add undo, overlap control system, laundry auto-overlap home.
+
+## Current project status / assessment
+- App stable. Fixed the time-axis legend bug, added a full undo system, and built a per-event overlap control system.
+
+## Completed modifications / verification results
+1. **Time-axis legend fix** (`time-axis.tsx`). The old code had a spacer row at the top (height HOUR_HEIGHT with no label) and positioned labels at `-top-2` of each row, causing a 1-hour offset (12 AM and 1 AM appeared too close, everything shifted). Rewrote: removed the spacer, each hour row now has its label at the TOP of the row (aligned with the grid line at `h * HOUR_HEIGHT`). VERIFIED via DOM: labels read "12 AM | 1 AM | 2 AM | ... | 11 PM" in correct order; the "7 AM" label (top=131) aligns with the "Get ready + travel" 07:00 event block (top=137).
+
+2. **Undo system** (`undo-store.ts` + `POST /api/events/bulk` + toolbar Undo button + ⌘Z shortcut). A zustand store holds a stack of pre-mutation snapshots (each captures the moved event + any that will be bumped, with their original start/end). On undo, `api.bulkUpdate` restores all events in one round-trip. The toolbar Undo button (Undo2 icon) is disabled when the stack is empty; ⌘Z works from anywhere (including inside inputs). VERIFIED: dragged Homework down → Undo button enabled → clicked → Homework returned to original 10:50-11:20, button disabled again.
+
+3. **Overlap control system**. Promoted the "Allow overlap" toggle out of the advanced section into a prominent card near the alerts/repeat rows, with a Layers icon and contextual description ("This task can overlap same-location events" vs "This task blocks others — conflicts will be highlighted"). The conflict detection now respects location compatibility: an allowOverlap event (e.g. laundry at home) is NOT flagged as conflicting with any same-location event (home work, home cooking, etc.). VERIFIED via code: `conflictingEventIds` now skips when `aCanOverlap && sameLocation` or `bCanOverlap && sameLocation`.
+
+4. **Laundry auto-overlaps home events**. The category inference already sets laundry's `allowOverlap=true`; combined with the new location-aware conflict detection, laundry now correctly overlaps ANY home event without being highlighted as a conflict.
+
+TECHNICAL:
+- The undo stack is capped at 50 entries; each entry stores the label + affected events' pre-mutation times.
+- `POST /api/events/bulk` applies updates + optional deletions idempotently (skips missing events).
+- The time-axis fix also removed the empty spacer row that was eating one HOUR_HEIGHT of vertical space.
+- `bun run lint` clean. No runtime errors across all 4 views.
+
+## Unresolved issues / risks + next-phase recommendations
+- Wednesday's two sleep blocks are a SEED DATA quirk (Tuesday's sleep 22:50→06:50 overlaps Wednesday's sleep 01:00→09:00). The lane layout renders them side-by-side correctly, but the user perceives it as a duplicate. Could add a "merge overlapping same-title events" option in a future round.
+- Real-time auto-adjust during drag (bumped blocks moving as you drag, before drop) is not implemented — the drag preview moves the dragged block in real-time, but bumped tasks only adjust on drop. Implementing live reorder during drag would require running the scheduler on every pointermove (expensive). Flag for future round with throttling.
+- Undo doesn't yet cover create/delete (only move/resize). Adding `createdIds` / `deleted` restoration is stubbed in the store but not wired.
+- Next rounds: real-time drag auto-adjust, undo for create/delete, merge-overlapping-events option.

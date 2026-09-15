@@ -46,6 +46,8 @@ import {
   type VisibilityCtx,
 } from "./visibility-context";
 import { HOUR_HEIGHT, splitOvernightEvents } from "@/lib/calendar-ui";
+import { useUndo } from "@/lib/undo-store";
+import { api } from "@/lib/api-client";
 
 type View = "day" | "week" | "month" | "agenda";
 
@@ -53,6 +55,7 @@ export function CalendarApp() {
   // Settings (must be before state that depends on it).
   const settings = useSettings();
   const weekStartsOn = settings.weekStartsOn;
+  const undoStack = useUndo();
 
   // View state
   const [view, setView] = useState<View>("week");
@@ -301,6 +304,27 @@ export function CalendarApp() {
       dayStart.setHours(0, 0, 0, 0);
       const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
 
+      // Snapshot pre-move state for undo (the moved event + any that will be bumped).
+      const willBeBumped = events.filter(
+        (e) =>
+          e.id !== realId &&
+          e.flexibility !== "fixed" &&
+          parseISO(e.start) < new Date(newEnd) &&
+          parseISO(e.end) > new Date(newStart) &&
+          !(e.allowOverlap && event.allowOverlap)
+      );
+      undoStack.push({
+        label: `Move "${event.title}"`,
+        events: [
+          { id: realId, start: event.start, end: event.end },
+          ...willBeBumped.map((e) => ({
+            id: e.id.split("#")[0],
+            start: e.start,
+            end: e.end,
+          })),
+        ],
+      });
+
       // Check for fixed-event overlaps so we can warn (but still allow).
       const validation = validateWindow(event, newStart, newEnd, events);
 
@@ -355,6 +379,27 @@ export function CalendarApp() {
     void event;
   }, []);
 
+  // ---- Undo ----
+  const handleUndo = useCallback(async () => {
+    const entry = undoStack.pop();
+    if (!entry) {
+      toast.error("Nothing to undo.");
+      return;
+    }
+    try {
+      await api.bulkUpdate({
+        updates: entry.events.map((e) => ({
+          id: e.id,
+          start: e.start,
+          end: e.end,
+        })),
+      });
+      toast.success(`Undid: ${entry.label}`);
+    } catch (e) {
+      toast.error("Couldn't undo", { description: String(e) });
+    }
+  }, [undoStack]);
+
   // Jump to an event from the search palette: switch to Day view on its date
   // and open the edit sheet so the user lands right on it.
   const handleJumpToEvent = useCallback((event: CalendarEvent) => {
@@ -374,16 +419,25 @@ export function CalendarApp() {
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea" || t?.isContentEditable) {
-        // still allow Cmd/Ctrl+K for search from anywhere
+        // still allow Cmd/Ctrl+K for search + Cmd/Ctrl+Z for undo from anywhere
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
           e.preventDefault();
           setSearchOpen(true);
+        }
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+          e.preventDefault();
+          handleUndo();
         }
         return;
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setSearchOpen(true);
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        handleUndo();
         return;
       }
       if (e.key === "/") {
@@ -568,6 +622,8 @@ export function CalendarApp() {
           onOpenImport={() => setImportOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenFreeSlot={() => setFreeSlotOpen(true)}
+          onUndo={handleUndo}
+          canUndo={undoStack.stack.length > 0}
         />
 
         <div className="flex min-h-0 flex-1 overflow-hidden">

@@ -28,6 +28,15 @@ export const api = {
   deleteEvent: (id: string) =>
     jfetch<{ ok: true }>(`/api/events/${id}`, { method: "DELETE" }),
 
+  bulkUpdate: (body: {
+    updates: { id: string; start: string; end: string }[];
+    deleteIds?: string[];
+  }) =>
+    jfetch<{ ok: true; updated: number; deleted: number }>("/api/events/bulk", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   searchEvents: (q: string, limit = 30) =>
     jfetch<{ events: CalendarEvent[] }>(
       `/api/events/search?q=${encodeURIComponent(q)}&limit=${limit}`

@@ -7,7 +7,7 @@ import {
   differenceInMinutes,
   addMinutes,
 } from "date-fns";
-import { MapPin, Sparkles, Trash2, Wand2, Lock, GripVertical, Copy } from "lucide-react";
+import { MapPin, Sparkles, Trash2, Wand2, Lock, GripVertical, Copy, Layers } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -813,6 +813,22 @@ function EditForm({
         </div>
 
         <Separator className="my-2" />
+
+        {/* Overlap control — promoted out of advanced for visibility */}
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 p-2.5">
+          <div className="flex items-start gap-2">
+            <Layers className="mt-0.5 size-3.5 text-muted-foreground" />
+            <div>
+              <div className="text-xs font-medium">Allow overlap with other events</div>
+              <div className="text-[10px] text-muted-foreground">
+                {allowOverlap
+                  ? "This task can overlap same-location events (e.g. laundry while working)."
+                  : "This task blocks others — conflicts will be highlighted."}
+              </div>
+            </div>
+          </div>
+          <Switch checked={allowOverlap} onCheckedChange={setAllowOverlap} />
+        </div>
 
         {/* Repeat */}
         <Row label="Repeat">
