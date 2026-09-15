@@ -11,6 +11,7 @@ import {
 import { Lock, MapPin, Clock, ChevronRight, AlertTriangle } from "lucide-react";
 import type { Calendar, CalendarEvent } from "@/lib/types";
 import { eventColor, conflictingEventIds } from "@/lib/calendar-ui";
+import { useSettings } from "@/lib/settings-store";
 import { cn } from "@/lib/utils";
 
 interface AgendaViewProps {
@@ -59,13 +60,16 @@ export function AgendaView({
   }, [events, hiddenCalendarIds, rangeStart, rangeEnd]);
 
   // Conflict detection across the whole agenda range (so a conflict badge
-  // appears on any row that overlaps another).
+  // appears on any row that overlaps another). Gated by the settings toggle.
+  const showConflicts = useSettings((s) => s.showConflictBadges);
   const conflictIds = useMemo(
     () =>
-      conflictingEventIds(
-        events.filter((e) => !hiddenCalendarIds.has(e.calendarId))
-      ),
-    [events, hiddenCalendarIds]
+      showConflicts
+        ? conflictingEventIds(
+            events.filter((e) => !hiddenCalendarIds.has(e.calendarId))
+          )
+        : new Set<string>(),
+    [events, hiddenCalendarIds, showConflicts]
   );
   const conflictCount = conflictIds.size;
 

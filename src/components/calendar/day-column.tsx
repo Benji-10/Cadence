@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { isSameDay, parseISO } from "date-fns";
+import { isSameDay, parseISO, format } from "date-fns";
 import type { Calendar, CalendarEvent } from "@/lib/types";
 import { HOUR_HEIGHT, layoutEvents, snapMins, conflictingEventIds } from "@/lib/calendar-ui";
 import { EventBlock } from "./event-block";
@@ -37,6 +37,9 @@ interface DayColumnProps {
   // X can move the event across days. When omitted (DayView), the column
   // creates its own vertical-only drag.
   sharedDrag?: ReturnType<typeof useEventDrag>;
+  // Multi-day timed events that continue onto this day (not starting here).
+  // Rendered as a compact "spills over" bar at the top of the column.
+  continuations?: CalendarEvent[];
 }
 
 export function DayColumn({
@@ -53,6 +56,7 @@ export function DayColumn({
   onBlockedMove,
   defaultCalendarId,
   sharedDrag,
+  continuations,
 }: DayColumnProps) {
   const positioned = useMemo(() => layoutEvents(events), [events]);
   const showConflicts = useSettings((s) => s.showConflictBadges);
@@ -154,6 +158,38 @@ export function DayColumn({
             height: Math.abs(createDrag.preview.endY - createDrag.preview.startY),
           }}
         />
+      )}
+
+      {/* Multi-day continuation bars (timed events spilling over from a previous day) */}
+      {continuations && continuations.length > 0 && (
+        <div className="absolute inset-x-0.5 top-1 z-[5] flex flex-col gap-0.5">
+          {continuations.map((ev) => {
+            const cal = calendarsById[ev.calendarId];
+            const color = ev.color ?? cal?.color ?? "#64748B";
+            const endsHere = isSameDay(parseISO(ev.end), day);
+            const endTime = parseISO(ev.end);
+            return (
+              <button
+                key={`cont-${ev.id}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect?.(ev);
+                }}
+                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-left text-[10px] font-medium text-white transition-filter hover:brightness-110"
+                style={{ backgroundColor: color }}
+                title={`${ev.title} (continues${endsHere ? ` until ${format(endTime, "HH:mm")}` : ""})`}
+              >
+                <span className="shrink-0 opacity-80">↳</span>
+                <span className="truncate">
+                  {ev.title}
+                  {endsHere && (
+                    <span className="ml-1 opacity-80">→ {format(endTime, "HH:mm")}</span>
+                  )}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       )}
 
       {/* Events */}

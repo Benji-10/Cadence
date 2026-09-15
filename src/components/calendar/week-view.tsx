@@ -96,6 +96,31 @@ export function WeekView({
     return buckets;
   }, [events, days]);
 
+  // Multi-day TIMED events: for each day that is NOT the start day but is
+  // within the event's span, render a continuation block at the top of that
+  // day's column (a "spills over from yesterday" indicator). This mirrors
+  // how iOS Calendar shows timed multi-day events.
+  const continuationsByDay = useMemo(() => {
+    const buckets: CalendarEvent[][] = Array.from({ length: 7 }, () => []);
+    for (const ev of events) {
+      if (ev.allDay) continue;
+      if (hiddenCalendarIds.has(ev.calendarId)) continue;
+      const s = parseISO(ev.start);
+      const e = parseISO(ev.end);
+      // only multi-day events
+      if (isSameDay(s, e)) continue;
+      for (let i = 0; i < days.length; i++) {
+        const dayStartMs = days[i].getTime();
+        const dayEndMs = dayStartMs + 24 * 60 * 60 * 1000;
+        // this day is within the span AND is not the start day
+        if (s.getTime() < dayEndMs && e.getTime() > dayStartMs && !isSameDay(s, days[i])) {
+          buckets[i].push(ev);
+        }
+      }
+    }
+    return buckets;
+  }, [events, days, hiddenCalendarIds]);
+
   // All-day events per day (shown in a dedicated strip below the day header,
   // mirroring iOS Calendar). An all-day event appears on every day it spans
   // within this week.
@@ -224,6 +249,7 @@ export function WeekView({
                   onBlockedMove={onBlockedMove}
                   defaultCalendarId={defaultCalendarId}
                   sharedDrag={drag}
+                  continuations={continuationsByDay[i]}
                 />
               );
             })}

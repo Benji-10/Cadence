@@ -357,3 +357,36 @@ TECHNICAL:
 - The `showConflictBadges` setting only gates DayColumn conflict badges; the agenda conflict banner always shows. Could be unified.
 - No multi-day event spanning in week view (timed multi-day events only render on their start day).
 - Next rounds: split persistence, auth, occurrence exceptions, multi-day spanning, agenda conflict toggle.
+
+---
+Task ID: 13 (15-min webDevReview round 9)
+Agent: main (webDevReview)
+Task: QA pass + multi-day timed event spanning in week view + unify conflict toggle across grid+agenda.
+
+## Current project status / assessment
+- App stable entering this round. agent-browser QA cycled Day/Week/Month/List with zero runtime/console errors.
+- This round closed the "multi-day spanning" gap (timed events that cross midnight only rendered on their start day) and unified the conflict-badges setting across the grid and agenda.
+
+## Completed modifications / verification results
+NEW FEATURES:
+1. Multi-day timed event spanning in WeekView. Added a `continuationsByDay` memo that finds timed (non-all-day) events spanning multiple days and, for each day that is NOT the start day but is within the span, adds the event to that day's continuation bucket. Passed `continuations` prop to DayColumn, which renders a compact colored bar at the top of the column: a "↳" arrow prefix + the event title, and if the event ENDS on that day, a "→ HH:mm" suffix showing the end time. Clicking a continuation bar opens the edit sheet for the parent event. VERIFIED: created a "Conference" event Mon 14:00 → Wed 18:00 → Tuesday column showed "↳ Conference" (continues), Wednesday showed "↳ Conference → 18:00" (continues + ends here). The start day (Monday) still renders the full timed block at 14:00.
+
+STYLING POLISH:
+- Continuation bars: solid calendar-color with white text, "↳" arrow icon, hover brightness, `z-[5]` so they sit above the hour grid but below dragged events. Title attribute gives a tooltip "Conference (continues until 18:00)".
+- Compact `[10px]` font + tight padding so multiple continuations stack neatly at the column top.
+
+BUG FIX / CONSISTENCY:
+- Unified the `showConflictBadges` setting: the agenda view's conflict detection (banner + per-day badges + row highlights) was previously always-on; now it's gated by the same `useSettings((s) => s.showConflictBadges)` as the grid, so toggling it off in Settings hides conflicts everywhere consistently.
+
+TECHNICAL:
+- `continuationsByDay` uses the same interval-overlap logic as the all-day strip (`s < dayEndMs && e > dayStartMs`) plus a `!isSameDay(s, days[i])` guard to exclude the start day.
+- The continuation bar is a separate render layer in DayColumn (not an EventBlock) so it doesn't participate in lane layout or drag.
+- `bun run lint` clean. No runtime errors across all 4 views.
+
+## Unresolved issues / risks + next-phase recommendations
+- Split persistence: bumped tasks that don't fit one slot still persist only the first chunk. Still open (long-standing).
+- Netlify Identity auth gating: still widget-only. Still open (long-standing).
+- Occurrence-exception editing for recurring events: still edits the parent. Still open.
+- Continuation bars are week-view only; DayView could show a "continues from yesterday" header too.
+- The continuation bar doesn't show the START time on the first day's bar (only the end time on the last day) — could be added.
+- Next rounds: split persistence, auth, occurrence exceptions, day-view continuation header.
