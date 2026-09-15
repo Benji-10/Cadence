@@ -574,3 +574,42 @@ TECHNICAL:
 - The iOS scroll-wheel time picker is not available (HTML select is used instead — the user acknowledged this is acceptable).
 - Pinch-to-zoom is wired into DayView only; WeekView could get it too.
 - Next rounds: occurrence exceptions, WeekView pinch, split persistence.
+
+---
+Task ID: 20 (user feedback round 6 — iOS-style touch interaction model)
+Agent: main
+Task: Events only respond to tap (open edit) or long-press (drag/quick-actions); swipes/scrolls always control the calendar.
+
+## Current project status / assessment
+- App stable. Fundamentally redesigned the touch interaction model to match iOS Calendar: swipes and scrolls always control the calendar (navigate days, scroll up/down, zoom), while events only respond to a quick tap (open edit sheet) or a 0.6s long-press (enter drag mode + show quick actions + resize handles).
+
+## Completed modifications / verification results
+1. **New touch interaction state machine** (`use-event-drag.ts` rewritten). Three modes:
+   - **`idle`** → pointer down → `observing` (start a 600ms timer; do NOT preventDefault/stopPropagation — let native scroll/swipe happen)
+   - **`observing`** + pointer moves >8px → `idle` (cancel timer; it's a scroll/swipe, event is not interacted with)
+   - **`observing`** + pointer up before timer → `idle` + tap fires (caller's onClick opens edit sheet)
+   - **`observing`** + timer fires (600ms) → `active` with `viaLongPress=true` (enter drag mode: capture pointer events, show resize handles, fire onLongPress for quick actions)
+   - **`active`** + pointer move → update drag preview in real-time
+   - **`active`** + pointer up → commit move → `idle`
+   
+   On desktop (mouse): skip observing, go straight to `active` with `viaLongPress=false` (immediate drag, no quick-actions menu). `didDragRef` is only set true when the pointer actually moves (so a mouse click down+up without movement still opens the edit sheet).
+
+2. **Event blocks allow vertical scrolling** (`touch-action: pan-y`). The EventBlock's root element now has `touchAction: "pan-y"` instead of `touch-none`. This means touching an event and swiping vertically scrolls the calendar (doesn't move the event), while the long-press timer runs in the background. Only after 600ms of holding does the event "lift" into drag mode.
+
+3. **Long-press to create events** (`day-column.tsx`). On touch, tapping empty space starts a 600ms timer. If the finger doesn't move, the create sheet opens at the touched time. If the finger moves (scroll), the timer cancels. On desktop, click still creates immediately.
+
+4. **Quick-actions menu only on touch long-press** (`day-column.tsx`). The DayColumn effect watches `drag.interaction` and only fires `onLongPress` (which shows the QuickActions menu) when `viaLongPress === true`. Desktop mouse drags don't trigger it.
+
+5. **Swipe navigation preserved** (`day-view.tsx`). Horizontal swipe on the day grid still navigates to next/prev day. The `useSwipe` hook's threshold (60px) is higher than the drag-hook's move threshold (8px), but since the drag hook doesn't preventDefault during the "observing" phase, the swipe gesture flows through to the container naturally.
+
+VERIFICATION:
+- Desktop click on event → opens Edit event sheet (not quick actions). ✓
+- Desktop drag on event → moves it + auto-adjusts same-day tasks. ✓ (Moved Paid work 09:00→11:00 to 11:00→13:00)
+- All 5 views cycle cleanly with no errors. ✓
+- `bun run lint` clean. ✓
+
+## Unresolved issues / risks + next-phase recommendations
+- Need real-device touch testing (agent-browser simulates mouse, not touch). The touch interaction model is implemented per the iOS pattern but hasn't been verified on an actual phone.
+- The WeekView's shared drag also uses the new hook, so cross-day drag requires long-press on touch.
+- Repeating events still edit the parent (occurrence exceptions not yet implemented).
+- Next rounds: real-device testing, occurrence exceptions, split persistence.

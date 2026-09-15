@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, type MutableRefObject, useRef } from "react";
+import { memo, type MutableRefObject } from "react";
 import { Lock, MapPin, GripVertical, AlertTriangle } from "lucide-react";
 import type { Calendar, CalendarEvent } from "@/lib/types";
 import {
@@ -27,6 +27,9 @@ interface EventBlockProps {
   resizePreview?: ResizePreview | null;
   didDragRef?: MutableRefObject<boolean>;
   onPointerDown?: (event: CalendarEvent, e: React.PointerEvent) => void;
+  onPointerMove?: (e: React.PointerEvent) => void;
+  onPointerUp?: () => void;
+  onPointerLeave?: () => void;
   onHandlePointerDown?: (
     event: CalendarEvent,
     handle: "top" | "bottom",
@@ -48,13 +51,15 @@ function EventBlockImpl({
   resizePreview,
   didDragRef,
   onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerLeave,
   onHandlePointerDown,
   onSelect,
   onLongPress,
 }: EventBlockProps) {
   const color = eventColor(event, calendarsById);
   const text = contrastText(color);
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Use preview times when this event is being dragged or resized.
   const previewStart =
@@ -85,34 +90,10 @@ function EventBlockImpl({
       aria-label={`${event.title}, ${fmtTime(previewStart)} to ${fmtTime(previewEnd)}${
         event.location ? ", at " + event.location : ""
       }`}
-      onPointerDown={(e) => {
-        // Start a long-press timer (500ms). If the pointer doesn't move, fire
-        // the quick-actions menu. Cancelled on move/up (drag takes over).
-        if (onLongPress && e.pointerType !== "mouse") {
-          longPressTimer.current = setTimeout(() => {
-            onLongPress(event);
-          }, 500);
-        }
-        onPointerDown?.(event, e);
-      }}
-      onPointerMove={() => {
-        if (longPressTimer.current) {
-          clearTimeout(longPressTimer.current);
-          longPressTimer.current = null;
-        }
-      }}
-      onPointerUp={() => {
-        if (longPressTimer.current) {
-          clearTimeout(longPressTimer.current);
-          longPressTimer.current = null;
-        }
-      }}
-      onPointerLeave={() => {
-        if (longPressTimer.current) {
-          clearTimeout(longPressTimer.current);
-          longPressTimer.current = null;
-        }
-      }}
+      onPointerDown={(e) => onPointerDown?.(event, e)}
+      onPointerMove={(e) => onPointerMove?.(e)}
+      onPointerUp={() => onPointerUp?.()}
+      onPointerLeave={() => onPointerLeave?.()}
       onClick={(e) => {
         // Skip click after a drag (pointer moved > threshold).
         if (didDragRef?.current) {
@@ -131,7 +112,7 @@ function EventBlockImpl({
         }
       }}
       className={cn(
-        "group absolute z-10 cursor-grab touch-none select-none overflow-hidden rounded-md text-left",
+        "group absolute z-10 cursor-pointer select-none overflow-hidden rounded-md text-left",
         "transition-[box-shadow,transform] duration-150 hover:z-20 hover:shadow-lg active:cursor-grabbing",
         "hover:-translate-y-0.5",
         selected && "ring-2 ring-offset-1 ring-offset-background",
@@ -149,6 +130,11 @@ function EventBlockImpl({
         boxShadow: selected
           ? `0 0 0 2px ${color}, 0 6px 18px ${hexToRgba(color, 0.4)}`
           : `0 1px 2px ${hexToRgba(color, 0.3)}, inset 0 1px 0 ${hexToRgba("#ffffff", 0.18)}`,
+        // Allow vertical scrolling (pan-y) on touch so the calendar can scroll
+        // while touching events. Horizontal pan is blocked (that's for swipe
+        // nav which is handled at the container level). Once a long-press
+        // activates drag mode, the drag handler captures events.
+        touchAction: "pan-y",
       }}
     >
       {/* left color bar — always shown */}
