@@ -16,6 +16,8 @@ import {
   Sun,
   Moon,
   Keyboard,
+  Download,
+  BarChart3,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -47,6 +49,7 @@ interface ToolbarProps {
   onEnableNotifications: () => void;
   onOpenSearch: () => void;
   onOpenShortcuts: () => void;
+  onOpenInsights: () => void;
 }
 
 export function Toolbar({
@@ -62,6 +65,7 @@ export function Toolbar({
   onEnableNotifications,
   onOpenSearch,
   onOpenShortcuts,
+  onOpenInsights,
 }: ToolbarProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const [calendarsOpen, setCalendarsOpen] = useState(false);
@@ -122,6 +126,17 @@ export function Toolbar({
             title="Search (⌘K)"
           >
             <Search className="size-4" />
+          </Button>
+
+          {/* Insights */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onOpenInsights}
+            aria-label="Week insights"
+            title="Week insights"
+          >
+            <BarChart3 className="size-4" />
           </Button>
 
           {/* Day/Week/Month/List segmented toggle */}
@@ -210,6 +225,14 @@ export function Toolbar({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() =>
+                  window.open("/api/ical", "_blank")
+                }
+              >
+                <Download className="size-4" />
+                Export as .ics
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={onReseed}>
                 <RefreshCw className="size-4" />
                 Reset to sample schedule

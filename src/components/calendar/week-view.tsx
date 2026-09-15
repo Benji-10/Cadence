@@ -77,9 +77,11 @@ export function WeekView({
   });
 
   // Group events by day. An event belongs to a day if it starts on that day.
+  // All-day events are excluded here (they render in the all-day strip).
   const eventsByDay = useMemo(() => {
     const buckets: CalendarEvent[][] = Array.from({ length: 7 }, () => []);
     for (const ev of events) {
+      if (ev.allDay) continue;
       const start = parseISO(ev.start);
       for (let i = 0; i < days.length; i++) {
         if (isSameDay(start, days[i])) {
@@ -90,6 +92,31 @@ export function WeekView({
     }
     return buckets;
   }, [events, days]);
+
+  // All-day events per day (shown in a dedicated strip below the day header,
+  // mirroring iOS Calendar). An all-day event appears on every day it spans
+  // within this week.
+  const allDayByDay = useMemo(() => {
+    const buckets: CalendarEvent[][] = Array.from({ length: 7 }, () => []);
+    for (const ev of events) {
+      if (!ev.allDay) continue;
+      if (hiddenCalendarIds.has(ev.calendarId)) continue;
+      const s = parseISO(ev.start).getTime();
+      const e = parseISO(ev.end).getTime();
+      for (let i = 0; i < days.length; i++) {
+        const dayStartMs = days[i].getTime();
+        const dayEndMs = dayStartMs + 24 * 60 * 60 * 1000;
+        // event covers this day if it starts before the day ends AND ends
+        // after the day starts (standard interval overlap).
+        if (s < dayEndMs && e > dayStartMs) {
+          buckets[i].push(ev);
+        }
+      }
+    }
+    return buckets;
+  }, [events, days, hiddenCalendarIds]);
+
+  const hasAllDay = allDayByDay.some((b) => b.length > 0);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -122,6 +149,49 @@ export function WeekView({
           })}
         </div>
       </div>
+
+      {/* All-day events strip */}
+      {hasAllDay && (
+        <div className="flex border-b border-border bg-muted/20">
+          <div className="flex w-14 shrink-0 items-center justify-end border-r border-border px-1.5">
+            <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+              all-day
+            </span>
+          </div>
+          <div className="grid flex-1 grid-cols-7">
+            {days.map((d, i) => {
+              const dayAllDay = allDayByDay[i] ?? [];
+              return (
+                <div
+                  key={`allday-${d.toISOString()}`}
+                  className="flex min-h-[28px] flex-col gap-0.5 border-r border-border p-1 last:border-r-0"
+                >
+                  {dayAllDay.slice(0, 2).map((ev) => {
+                    const cal = calendarsById[ev.calendarId];
+                    const color = ev.color ?? cal?.color ?? "#64748B";
+                    return (
+                      <button
+                        key={ev.id}
+                        onClick={() => onSelect?.(ev)}
+                        className="truncate rounded px-1.5 py-0.5 text-left text-[10px] font-medium leading-tight text-white transition-filter hover:brightness-110"
+                        style={{ backgroundColor: color }}
+                        title={ev.title}
+                      >
+                        {ev.title}
+                      </button>
+                    );
+                  })}
+                  {dayAllDay.length > 2 && (
+                    <span className="px-1 text-[9px] text-muted-foreground">
+                      +{dayAllDay.length - 2} more
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Scrollable grid */}
       <div

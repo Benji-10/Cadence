@@ -33,6 +33,15 @@ export const api = {
       `/api/events/search?q=${encodeURIComponent(q)}&limit=${limit}`
     ),
 
+  // Returns a URL that triggers a .ics download (opens in a new tab).
+  icsExportUrl: (from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
+    return `/api/ical${qs ? "?" + qs : ""}`;
+  },
+
   reorder: (body: {
     mode: "week" | "around";
     rangeStart: string;

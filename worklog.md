@@ -189,3 +189,39 @@ TECHNICAL:
 - Cross-day drag resolver still snaps start to pointer (no grab-offset preservation) — minor UX nit.
 - No all-day event strip in the day/week header yet (all-day events render as timed blocks).
 - Next rounds: split persistence, auth, occurrence-exception editing, all-day header strip, and an iCal/.ics import/export.
+
+---
+Task ID: 8 (15-min webDevReview round 4)
+Agent: main (webDevReview)
+Task: QA pass + add all-day event strip, iCal (.ics) export, and a week-insights statistics dialog.
+
+## Current project status / assessment
+- App stable and bug-free entering this round. agent-browser QA cycled Day/Week/Month/List with zero runtime/console errors; sidebar + cross-day drag + agenda + recurrence expansion all confirmed from prior rounds.
+- This round delivered three user-facing features that round out parity with iOS Calendar: all-day event strip, .ics export, and a weekly insights/stats panel.
+
+## Completed modifications / verification results
+NEW FEATURES:
+1. All-day event strip in WeekView (`src/components/calendar/week-view.tsx`). A dedicated row below the day header (labelled "ALL-DAY") renders all-day events as colored chips, mirroring iOS Calendar. Multi-day all-day events span every day they cover (standard interval-overlap: `s < dayEnd && e > dayStart`). All-day events are excluded from the timed DayColumn so they don't double-render. Up to 2 chips per day + "+N more" overflow. VERIFIED: created a 5-day "Reading week" all-day event → chips appeared Mon/Tue/Wed (its span) in the strip; created a 1-day "Holiday" → chip on Wednesday only.
+2. iCal (.ics) export (`src/app/api/ical/route.ts`, `GET /api/ical?from=&to=`). Streams a standards-compliant VCALENDAR with VEVENT per event: UID, DTSTAMP, DTSTART/DTEND (VALUE=DATE for all-day, UTC stamps for timed), SUMMARY, LOCATION, DESCRIPTION, CATEGORIES, RRULE (from recurrence rules incl. FREQ/INTERVAL/UNTIL/BYDAY), and VALARM entries for each alert offset (TRIGGER:-PT{N}M). Added `api.icsExportUrl()` helper + an "Export as .ics" item in the toolbar's More menu (opens in new tab → browser downloads cadence.ics). VERIFIED: `curl /api/ical` returned HTTP 200 with 4158 lines of valid iCal; spot-checked VEVENT/VALARM/RRULE structure.
+3. Week insights dialog (`src/components/calendar/insights-dialog.tsx`). Opened via a new BarChart3 icon button in the toolbar. Shows: 4 stat cards (Scheduled time, Event count, Fixed time with %-locked hint, Flexible time), a horizontal stacked category-breakdown bar, a legend list (top 8 categories with hours + %), and a "Busiest day" callout. VERIFIED: opened via the toolbar button → dialog showed "276h 5m scheduled, 88 events, 81h 40m fixed (30% locked), 194h 25m flexible", category bar + legend, and "Busiest day: Monday, Sep 14".
+
+STYLING POLISH:
+- All-day strip uses `bg-muted/20` with a 14-width "all-day" label column matching the time-axis width; chips are solid calendar-color with white text and hover brightness.
+- Insights stat cards use bordered `bg-card` with icon + uppercase tracked label + large tabular-nums value + muted hint.
+- Category bar is a 12px-tall rounded-full stacked segment; legend rows have color dot + label + hours + %.
+- Toolbar gained a BarChart3 "Week insights" icon button (ghost variant) alongside Search.
+
+TECHNICAL:
+- `/api/export` route was rejected by Next.js (file extension `.ics` in folder name → 404); renamed to `/api/ical` which works cleanly.
+- The all-day span logic was initially buggy (crude isSameDay checks); rewritten to proper interval overlap `s < dayEndMs && e > dayStartMs`.
+- `api-client.icsExportUrl(from?, to?)` returns a relative URL for `window.open`.
+- Insights computes stats purely client-side from the already-fetched events (no new API) — O(n) over the visible range.
+- `bun run lint` clean. No runtime errors across all 4 views.
+
+## Unresolved issues / risks + next-phase recommendations
+- Split persistence: bumped tasks that don't fit one slot still persist only the first chunk. Still open.
+- Netlify Identity auth gating: still widget-only, no server-side session. Still open.
+- Occurrence-exception editing: editing a recurring occurrence currently edits the PARENT (all instances). Needs exception modeling.
+- iCal IMPORT is not yet supported (export only). A `.ics` parse + create-events path would close the loop.
+- The all-day strip is week-view only; DayView could get a single-day all-day header too.
+- Next rounds: split persistence, auth, iCal import, occurrence exceptions, day-view all-day header.
