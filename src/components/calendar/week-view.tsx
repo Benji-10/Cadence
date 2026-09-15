@@ -1,10 +1,12 @@
 "use client";
 
+import { useMemo, useRef } from "react";
 import { addDays, format, isSameDay, parseISO } from "date-fns";
 import type { Calendar, CalendarEvent } from "@/lib/types";
 import { DayColumn } from "./day-column";
 import { TimeAxis } from "./time-axis";
-import { HOUR_HEIGHT } from "@/lib/calendar-ui";
+import { HOUR_HEIGHT, snapMins } from "@/lib/calendar-ui";
+import { useEventDrag } from "@/hooks/use-event-drag";
 import { cn } from "@/lib/utils";
 
 interface WeekViewProps {
@@ -44,13 +46,50 @@ export function WeekView({
   defaultCalendarId,
   scrollContainerRef,
 }: WeekViewProps) {
-  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const today = new Date();
+  const columnsRef = useRef<HTMLDivElement | null>(null);
+
+  // Shared drag instance lifted to the week level so the pointer's X can
+  // determine the target day (cross-day drag). The resolver maps client
+  // coordinates → a concrete start/end datetime within the 7-day grid.
+  const drag = useEventDrag({
+    onMove: (event, newStart, newEnd) => onMoveEvent?.(event, newStart, newEnd),
+    onBlocked: (event) => onBlockedMove?.(event),
+    resolveNewTimes: (event, clientX, _originY, clientY) => {
+      const el = columnsRef.current;
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      const colWidth = rect.width / 7;
+      let colIdx = Math.floor((clientX - rect.left) / colWidth);
+      colIdx = Math.max(0, Math.min(6, colIdx));
+      const yInCol = clientY - rect.top;
+      let mins = snapMins((yInCol / HOUR_HEIGHT) * 60);
+      mins = Math.max(0, Math.min(23 * 60 + 45, mins));
+      const targetDay = days[colIdx];
+      const start = new Date(targetDay);
+      start.setHours(0, 0, 0, 0);
+      start.setMinutes(mins);
+      const durMs = parseISO(event.end).getTime() - parseISO(event.start).getTime();
+      const end = new Date(start.getTime() + durMs);
+      return { newStart: start.toISOString(), newEnd: end.toISOString() };
+    },
+  });
 
   // Group events by day. An event belongs to a day if it starts on that day.
-  // (Events that cross midnight may render in their start day only — same as
-  // the iOS calendar's day view.)
-  const eventsByDay = useMemo_eventsByDay(events, days);
+  const eventsByDay = useMemo(() => {
+    const buckets: CalendarEvent[][] = Array.from({ length: 7 }, () => []);
+    for (const ev of events) {
+      const start = parseISO(ev.start);
+      for (let i = 0; i < days.length; i++) {
+        if (isSameDay(start, days[i])) {
+          buckets[i].push(ev);
+          break;
+        }
+      }
+    }
+    return buckets;
+  }, [events, days]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -70,7 +109,7 @@ export function WeekView({
                 </span>
                 <span
                   className={cn(
-                    "mt-1 flex size-7 items-center justify-center rounded-full text-sm font-semibold",
+                    "mt-1 flex size-7 items-center justify-center rounded-full text-sm font-semibold transition-colors",
                     today_
                       ? "bg-primary text-primary-foreground"
                       : "text-foreground"
@@ -92,17 +131,16 @@ export function WeekView({
       >
         <div className="flex min-w-max">
           <TimeAxis />
-          <div className="grid flex-1 grid-cols-7">
+          <div ref={columnsRef} className="grid flex-1 grid-cols-7">
             {days.map((d, i) => {
-              const dayEvents = eventsByDay[i] ?? [];
-              const visible = dayEvents.filter(
+              const dayEvents = (eventsByDay[i] ?? []).filter(
                 (e) => !hiddenCalendarIds.has(e.calendarId)
               );
               return (
                 <DayColumn
                   key={d.toISOString()}
                   day={d}
-                  events={visible}
+                  events={dayEvents}
                   calendarsById={calendarsById}
                   selectedEventId={selectedEventId}
                   isToday={isSameDay(d, today)}
@@ -112,6 +150,7 @@ export function WeekView({
                   onResizeEvent={onResizeEvent}
                   onBlockedMove={onBlockedMove}
                   defaultCalendarId={defaultCalendarId}
+                  sharedDrag={drag}
                 />
               );
             })}
@@ -122,22 +161,4 @@ export function WeekView({
       </div>
     </div>
   );
-}
-
-// Hoist the events-by-day grouping into a tiny custom hook so we can keep the
-// component body readable. Memoized on the events array reference.
-function useMemo_eventsByDay(events: CalendarEvent[], days: Date[]) {
-  // Use Map keyed by day-ISO for O(n) grouping.
-  const buckets = new Map<number, CalendarEvent[]>();
-  for (let i = 0; i < days.length; i++) buckets.set(i, []);
-  for (const ev of events) {
-    const start = parseISO(ev.start);
-    for (let i = 0; i < days.length; i++) {
-      if (isSameDay(start, days[i])) {
-        buckets.get(i)!.push(ev);
-        break;
-      }
-    }
-  }
-  return Array.from(buckets.values());
 }

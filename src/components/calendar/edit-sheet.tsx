@@ -7,7 +7,7 @@ import {
   differenceInMinutes,
   addMinutes,
 } from "date-fns";
-import { MapPin, Sparkles, Trash2, Wand2, Lock, GripVertical } from "lucide-react";
+import { MapPin, Sparkles, Trash2, Wand2, Lock, GripVertical, Copy } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -399,6 +399,45 @@ function EditForm({
       onOpenChange(false);
     } catch (e) {
       toast.error("Couldn't delete", { description: String(e) });
+    }
+  };
+
+  // Duplicate the current event one day later (same time). Keeps all the
+  // intelligence metadata so the copy behaves the same way.
+  const handleDuplicate = async () => {
+    if (!state?.event) return;
+    const ev = state.event;
+    const startMs = parseISO(ev.start).getTime();
+    const endMs = parseISO(ev.end).getTime();
+    const dur = endMs - startMs;
+    const newStart = new Date(startMs + 24 * 60 * 60 * 1000);
+    const newEnd = new Date(newStart.getTime() + dur);
+    try {
+      const res = await createMut.mutateAsync({
+        title: ev.title,
+        start: newStart.toISOString(),
+        end: newEnd.toISOString(),
+        allDay: ev.allDay,
+        location: ev.location ?? undefined,
+        notes: ev.notes ?? undefined,
+        timezone: ev.timezone ?? undefined,
+        calendarId: ev.calendarId,
+        category: ev.category,
+        flexibility: ev.flexibility,
+        locationType: ev.locationType,
+        minChunkMins: ev.minChunkMins,
+        allowOverlap: ev.allowOverlap,
+        priority: ev.priority,
+        travelMins: ev.travelMins,
+        color: ev.color ?? undefined,
+        alerts: ev.alerts,
+        recurrence: ev.recurrence ?? undefined,
+      });
+      toast.success("Duplicated to " + format(newStart, "EEE d MMM, HH:mm"));
+      onOpenChange(false);
+      void res;
+    } catch (e) {
+      toast.error("Couldn't duplicate", { description: String(e) });
     }
   };
 
@@ -916,17 +955,28 @@ function EditForm({
 
       <SheetFooter className="flex-row items-center justify-between gap-2 border-t border-border px-4 py-3">
         {state?.mode === "edit" && state.event ? (
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-1.5 text-destructive hover:text-destructive"
-              >
-                <Trash2 className="size-3.5" />
-                Delete
-              </Button>
-            </AlertDialogTrigger>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5"
+              onClick={handleDuplicate}
+              disabled={createMut.isPending}
+            >
+              <Copy className="size-3.5" />
+              Duplicate
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1.5 text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="size-3.5" />
+                  Delete
+                </Button>
+              </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete event?</AlertDialogTitle>
@@ -946,6 +996,7 @@ function EditForm({
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+          </div>
         ) : (
           <Button
             variant="ghost"

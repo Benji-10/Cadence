@@ -36,8 +36,8 @@ import { cn } from "@/lib/utils";
 
 interface ToolbarProps {
   visibleDate: Date;
-  view: "day" | "week" | "month";
-  onViewChange: (v: "day" | "week" | "month") => void;
+  view: "day" | "week" | "month" | "agenda";
+  onViewChange: (v: "day" | "week" | "month" | "agenda") => void;
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
@@ -124,7 +124,7 @@ export function Toolbar({
             <Search className="size-4" />
           </Button>
 
-          {/* Day/Week/Month segmented toggle */}
+          {/* Day/Week/Month/List segmented toggle */}
           <div className="flex items-center rounded-md border border-border bg-muted/40 p-0.5">
             <SegBtn active={view === "day"} onClick={() => onViewChange("day")}>
               Day
@@ -134,6 +134,9 @@ export function Toolbar({
             </SegBtn>
             <SegBtn active={view === "month"} onClick={() => onViewChange("month")}>
               Month
+            </SegBtn>
+            <SegBtn active={view === "agenda"} onClick={() => onViewChange("agenda")}>
+              List
             </SegBtn>
           </div>
 

@@ -7,6 +7,7 @@ import { HOUR_HEIGHT } from "@/lib/calendar-ui";
 
 export interface DragPreview {
   eventId: string;
+  event: CalendarEvent;
   previewStart: string;
   previewEnd: string;
 }
@@ -14,13 +15,23 @@ export interface DragPreview {
 export interface UseEventDragOptions {
   onMove: (event: CalendarEvent, newStart: string, newEnd: string) => void;
   onBlocked: (event: CalendarEvent) => void;
+  // Optional: given the current pointer position (clientX/clientY) and the
+  // Y where the drag began, compute the new start/end datetimes. When
+  // provided this enables cross-day dragging (the resolver can map clientX to
+  // a day). When omitted, the drag falls back to vertical/time-only movement.
+  resolveNewTimes?: (
+    event: CalendarEvent,
+    clientX: number,
+    originClientY: number,
+    currentClientY: number
+  ) => { newStart: string; newEnd: string } | null;
 }
 
-// Pointer-event-based vertical drag. Snaps to 15min. The dragged event's
-// preview start/end are returned in `drag` so the day column can render a
-// ghost at the new position. `didDragRef` is true between pointer-down and
-// the next pointer-down if a drag (movement > threshold) actually occurred —
-// used by the event block to suppress the click that follows a drag.
+// Pointer-event-based drag. Snaps to 15min. The dragged event's preview
+// start/end are returned in `drag` so the day column can render a ghost at the
+// new position. `didDragRef` is true between pointer-down and the next
+// pointer-down if a drag (movement > threshold) actually occurred — used by the
+// event block to suppress the click that follows a drag.
 export function useEventDrag(opts: UseEventDragOptions) {
   const optsRef = useRef(opts);
   useEffect(() => {
@@ -33,37 +44,65 @@ export function useEventDrag(opts: UseEventDragOptions) {
     didDragRef.current = false;
   }, []);
 
-  const beginDrag = useCallback((event: CalendarEvent, clientY: number) => {
-    document.body.classList.add("dragging");
-    didDragRef.current = false;
+  const beginDrag = useCallback(
+    (event: CalendarEvent, originX: number, originY: number) => {
+      document.body.classList.add("dragging");
+      didDragRef.current = false;
 
-    const onMove = (e: PointerEvent) => {
-      const deltaY = e.clientY - clientY;
-      if (Math.abs(deltaY) > 5) didDragRef.current = true;
-      const deltaMins = Math.round((deltaY / HOUR_HEIGHT) * 60 / 15) * 15;
-      const startMs = parseISO(event.start).getTime();
-      const durMs = parseISO(event.end).getTime() - parseISO(event.start).getTime();
-      const newStartMs = startMs + deltaMins * 60_000;
-      const newStart = new Date(newStartMs).toISOString();
-      const newEnd = new Date(newStartMs + durMs).toISOString();
-      setDrag({ eventId: event.id, previewStart: newStart, previewEnd: newEnd });
-    };
+      const onMove = (e: PointerEvent) => {
+        const deltaY = e.clientY - originY;
+        const deltaX = e.clientX - originX;
+        if (Math.abs(deltaY) > 5 || Math.abs(deltaX) > 8) didDragRef.current = true;
 
-    const onUp = () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      document.body.classList.remove("dragging");
-      setDrag((current) => {
-        if (current && current.previewStart !== event.start) {
-          optsRef.current.onMove(event, current.previewStart, current.previewEnd);
+        let next: { newStart: string; newEnd: string } | null = null;
+        if (optsRef.current.resolveNewTimes) {
+          next = optsRef.current.resolveNewTimes(
+            event,
+            e.clientX,
+            originY,
+            e.clientY
+          );
         }
-        return null;
-      });
-    };
+        if (!next) {
+          // Vertical/time-only fallback (same-day).
+          const deltaMins = Math.round((deltaY / HOUR_HEIGHT) * 60 / 15) * 15;
+          const startMs = parseISO(event.start).getTime();
+          const durMs = parseISO(event.end).getTime() - parseISO(event.start).getTime();
+          const newStartMs = startMs + deltaMins * 60_000;
+          next = {
+            newStart: new Date(newStartMs).toISOString(),
+            newEnd: new Date(newStartMs + durMs).toISOString(),
+          };
+        }
+        setDrag({
+          eventId: event.id,
+          event,
+          previewStart: next.newStart,
+          previewEnd: next.newEnd,
+        });
+      };
 
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-  }, []);
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        document.body.classList.remove("dragging");
+        setDrag((current) => {
+          if (current && current.previewStart !== event.start) {
+            optsRef.current.onMove(
+              event,
+              current.previewStart,
+              current.previewEnd
+            );
+          }
+          return null;
+        });
+      };
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    []
+  );
 
   const onPointerDown = useCallback(
     (event: CalendarEvent, e: React.PointerEvent) => {
@@ -73,7 +112,7 @@ export function useEventDrag(opts: UseEventDragOptions) {
       }
       e.preventDefault();
       e.stopPropagation();
-      beginDrag(event, e.clientY);
+      beginDrag(event, e.clientX, e.clientY);
     },
     [beginDrag]
   );

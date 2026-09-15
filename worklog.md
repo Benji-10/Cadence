@@ -116,3 +116,38 @@ TECHNICAL:
 - Month view multi-day event spanning is approximate (crude loop). Could be tightened with proper interval math.
 - No month-view drag/resize (month is overview-only by design, like iOS).
 - The cron job is set to continue every 15 min; next rounds should pick up cross-day drag + split persistence + auth.
+
+---
+Task ID: 6 (15-min webDevReview round 2)
+Agent: main (webDevReview)
+Task: QA pass + implement cross-day drag, agenda/list view, duplicate-event, + footer polish.
+
+## Current project status / assessment
+- App stable and bug-free entering this round. agent-browser QA on Day/Week/Month/List views found no runtime/console errors. The 2-week seed (173 events) loads cleanly. Drag-to-move + resize + auto-optimize + search all confirmed working from prior rounds.
+- The previous round's next-phase priorities were: cross-day drag, split persistence, Netlify Identity auth. This round delivered cross-day drag.
+
+## Completed modifications / verification results
+NEW FEATURES:
+1. Cross-day drag (top next-phase priority). Refactored `useEventDrag` to accept an optional `resolveNewTimes(event, clientX, originY, currentY)` resolver; lifted the drag instance from per-`DayColumn` up to `WeekView` so a single shared drag spans all 7 columns and the pointer's X maps to the target day (colIdx = floor((clientX - containerLeft)/colWidth)). Extended `DragPreview` to carry the event object so the target column can render a live ghost. `DayColumn` now: (a) renders a faded dashed placeholder at the original position when its event is "flying" to another day, and (b) renders a ghost `EventBlock` (isGhost) when the preview's day matches its own column but the event isn't originally there. Falls back to vertical-only drag for `DayView` (no shared drag passed). VERIFIED via agent-browser: dragging Monday "Homework / assignment" rightward into Wednesday produced toast "Moved 'Homework / assignment' — also bumped 2 tasks" + "Language study was too long for a single gap…", and the event landed on Wed 12:45-13:45. Dragging onto a Tuesday slot overlapping the fixed "Travel to campus" was correctly blocked.
+2. Agenda / List view (`src/components/calendar/agenda-view.tsx`): a 4th view (toolbar segment "List", shortcut `a`). Scrollable list of events grouped by day with sticky day-headers (weekday chip, full date, "Today" badge, event count + total duration e.g. "15 events · 23h 15m"). Each row: calendar color bar, start/end times, title (+ lock for fixed), duration, location, and relative time ("in 3h 48m" / "done"). Click a row → edit sheet; click the day header → drill into Day view. Empty state with hint. VERIFIED: renders the full week grouped, with counts + relative times.
+3. Duplicate event (`src/components/calendar/edit-sheet.tsx`): a "Duplicate" button next to Delete in the edit-sheet footer. Creates a copy of the current event one day later (same time, all intelligence metadata preserved: category, flexibility, locationType, minChunkMins, allowOverlap, priority, travelMins, alerts, recurrence). VERIFIED: duplicating Monday's "Homework 10:50-11:20" created a copy on Tuesday 10:50-11:20, toast "Duplicated to Tue 15 Sep, 10:50".
+
+STYLING POLISH:
+- Sticky footer enriched: live "Next: …" countdown + a "N today" badge showing remaining events today + the pulsing emerald dot now has `animate-pulse`.
+- Agenda view is itself a styling showcase: per-event color bars, tabular-numbers times, sticky frosted day headers with duration totals, chevron affordances on hover.
+
+TECHNICAL:
+- `useEventDrag`: signature changed `beginDrag(event, clientX, originY)`; new `resolveNewTimes` option; `DragPreview` now includes `event`. Backward compatible (resolver optional → vertical fallback).
+- `WeekView`: creates the shared drag with a resolver using `columnsRef` (the 7-column grid) `getBoundingClientRect()`; passes `sharedDrag` to every `DayColumn`.
+- `DayColumn`: accepts optional `sharedDrag` prop; falls back to a local vertical-only drag when none (DayView). Renders flying placeholder + cross-day ghost.
+- `Toolbar`: 4-way segmented toggle (Day/Week/Month/List); `view` type is `day|week|month|agenda`.
+- `calendar-app`: agenda view rendered; `a` shortcut; footer `todayRemaining` memo + badge; agenda label in footer.
+- `bun run lint` clean. No runtime errors across all 4 views.
+
+## Unresolved issues / risks + next-phase recommendations
+- Split persistence: when a bumped task's full duration doesn't fit one slot, only the first chunk is still persisted (rest surfaced as a toast). Next round: have `rescheduleAround` return ALL placements and persist extra chunks via a bulk-create path.
+- Netlify Identity auth gating for production is still open (widget script present; no server-side session gating). Next round: add NextAuth/Identity callback + scope events/calendars by userId.
+- The cross-day drag resolver snaps the event's START to the pointer's snapped time (not preserving the grab offset within the block). Minor UX nit; could offset by the grab delta for pixel-perfect feel.
+- Month view multi-day spanning is still approximate.
+- Recurring events are stored but not yet expanded into occurrence instances on the grid.
+- Next rounds: split persistence, auth, recurrence expansion, and a mini-calendar date-picker in the sidebar for quick jump-to-date.

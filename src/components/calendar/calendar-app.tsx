@@ -31,6 +31,7 @@ import { Toolbar } from "./toolbar";
 import { WeekView } from "./week-view";
 import { DayView } from "./day-view";
 import { MonthView } from "./month-view";
+import { AgendaView } from "./agenda-view";
 import { EditSheet, type EditSheetState } from "./edit-sheet";
 import { ReorderPreview } from "./reorder-preview";
 import { SearchPalette } from "./search-palette";
@@ -41,7 +42,7 @@ import {
 } from "./visibility-context";
 import { HOUR_HEIGHT } from "@/lib/calendar-ui";
 
-type View = "day" | "week" | "month";
+type View = "day" | "week" | "month" | "agenda";
 
 export function CalendarApp() {
   // View state
@@ -370,6 +371,9 @@ export function CalendarApp() {
         case "m":
           setView("month");
           break;
+        case "a":
+          setView("agenda");
+          break;
         case "n": {
           const now = new Date();
           const start = new Date(now);
@@ -434,6 +438,18 @@ export function CalendarApp() {
       .sort((a, b) => parseISO(a.start).getTime() - parseISO(b.start).getTime())[0];
   }, [events, hiddenCalendarIds]);
 
+  // Count of events remaining today (for the footer's left badge).
+  const todayRemaining = useMemo(() => {
+    const now = Date.now();
+    const todayStr = new Date().toDateString();
+    return events.filter(
+      (e) =>
+        !hiddenCalendarIds.has(e.calendarId) &&
+        parseISO(e.end).getTime() > now &&
+        new Date(parseISO(e.start)).toDateString() === todayStr
+    ).length;
+  }, [events, hiddenCalendarIds]);
+
   const nextLabel = useMemo(() => {
     if (!nextEvent) return "Nothing upcoming";
     const start = parseISO(nextEvent.start);
@@ -455,7 +471,11 @@ export function CalendarApp() {
   );
 
   const visibleDate =
-    view === "week" ? weekStart : view === "month" ? monthDate : selectedDay;
+    view === "week"
+      ? weekStart
+      : view === "month"
+      ? monthDate
+      : selectedDay;
 
   return (
     <CalendarVisibilityContext.Provider value={visibilityCtx}>
@@ -504,6 +524,16 @@ export function CalendarApp() {
               onPickDay={handlePickDay}
               defaultCalendarId={defaultCalendarId}
             />
+          ) : view === "agenda" ? (
+            <AgendaView
+              rangeStart={parseISO(range.from)}
+              rangeEnd={parseISO(range.to)}
+              events={events}
+              calendarsById={calendarsById}
+              hiddenCalendarIds={hiddenCalendarIds}
+              onSelect={handleSelect}
+              onPickDay={handlePickDay}
+            />
           ) : (
             <DayView
               day={selectedDay}
@@ -532,8 +562,13 @@ export function CalendarApp() {
           role="contentinfo"
         >
           <div className="flex min-w-0 items-center gap-2">
-            <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+            <span className="size-1.5 shrink-0 rounded-full bg-emerald-500 animate-pulse" aria-hidden />
             <span className="truncate">{nextLabel}</span>
+            {todayRemaining > 0 && (
+              <span className="hidden shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline">
+                {todayRemaining} today
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <span className="hidden sm:inline">
@@ -541,6 +576,8 @@ export function CalendarApp() {
                 ? `Week of ${format(weekStart, "d MMM")}`
                 : view === "month"
                 ? format(monthDate, "MMMM yyyy")
+                : view === "agenda"
+                ? `Agenda · ${format(weekStart, "d MMM")}`
                 : format(selectedDay, "EEE d MMM")}
             </span>
             <span className="flex items-center gap-1">
