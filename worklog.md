@@ -736,3 +736,28 @@ TECHNICAL:
 - The SW registration might not be ready on first load; the `ready` promise resolves it but there could be a race.
 - Repeating events still edit the parent.
 - Next rounds: real-device testing, occurrence exceptions.
+
+---
+Task ID: 28 (user feedback round 14 — toast + app position below notch)
+Agent: main
+Task: Fix entire app + toasts to sit below iOS notch/status bar.
+
+## Current project status / assessment
+- App stable. Fixed the persistent toast/app-behind-notch issue.
+
+## Completed modifications / verification results
+1. **Entire app shifted below notch** — added `safe-top safe-bottom` classes to the root wrapper (`<div className="flex h-screen flex-col ... safe-top safe-bottom">`). The CSS utilities now use BOTH `margin-top` AND `padding-top: env(safe-area-inset-top)` — margin shifts the entire element down, padding adds internal clearance. On a notched iPhone PWA, the whole app (toolbar + calendar + footer) shifts down ~47px below the status bar. Removed duplicate `safe-top` from the toolbar and `safe-bottom` from the footer (now inherited from root).
+
+2. **Toasts pushed below notch via CSS override** — added a `<style>` tag with `[data-sonner-toaster] { top: calc(env(safe-area-inset-top, 0px) + 56px) !important; }`. This overrides Sonner's default top positioning to push toasts well below the notch + status bar. On a notched device: 47px (notch) + 56px (clearance) = 103px from the top of the viewport. On desktop: 0 + 56 = 56px. VERIFIED: the CSS is present in the DOM.
+
+3. **CSS utilities updated** (`globals.css`) — `safe-top` and `safe-bottom` now use BOTH margin AND padding (`margin-top: env(safe-area-inset-top); padding-top: env(safe-area-inset-top)`). Margin ensures the element physically shifts down; padding adds internal spacing. This double approach is more reliable than padding alone (which can be absorbed by fixed-height elements).
+
+TECHNICAL:
+- The `<style>` tag with `!important` is injected via React in `providers.tsx` — it renders before the Toaster component.
+- `env(safe-area-inset-top, 0px)` resolves to 0 on desktop/non-notched devices (no visual change) and ~47px on iPhone PWAs.
+- `bun run lint` clean. No runtime errors across all 5 views.
+
+## Unresolved issues / risks + next-phase recommendations
+- Needs real iOS device testing to verify the notch clearance is sufficient.
+- Repeating events still edit the parent.
+- Next rounds: real-device testing, occurrence exceptions.

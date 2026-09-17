@@ -28,16 +28,20 @@ export function Providers({ children }: { children: React.ReactNode }) {
     >
       <QueryClientProvider client={client}>
         {children}
-        {/* Toasts positioned well below the iOS notch/status bar.
-            On PWA with black-translucent, the notch is ~47px; we add 44px
-            minimum clearance so toasts don't get blurred behind the notch. */}
+        {/* Sonner's `offset` prop adds margin from the viewport edge.
+            We use a CSS calc with env(safe-area-inset-top) + 56px so toasts
+            appear well below the iOS notch + status bar on PWAs.
+            On desktop (no safe-area), this resolves to 56px which is fine. */}
+        <style>{`
+          [data-sonner-toaster] {
+            top: calc(env(safe-area-inset-top, 0px) + 56px) !important;
+          }
+        `}</style>
         <Toaster
           position="top-center"
           richColors
           closeButton
           style={{
-            paddingTop: "calc(env(safe-area-inset-top, 0px) + 44px)",
-            paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 8px)",
             zIndex: 9999,
           }}
           toastOptions={{

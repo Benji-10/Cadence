@@ -88,7 +88,7 @@ export function Toolbar({
 
   return (
     <header
-      className="glass safe-top sticky top-0 z-30 border-b border-border bg-background/80"
+      className="glass sticky top-0 z-30 border-b border-border bg-background/80"
       role="banner"
     >
       <div className="flex h-14 items-center gap-2 px-3 sm:px-4">
