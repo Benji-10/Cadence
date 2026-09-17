@@ -28,18 +28,22 @@ export function Providers({ children }: { children: React.ReactNode }) {
     >
       <QueryClientProvider client={client}>
         {children}
-        {/* Toasts positioned to respect iOS safe areas (notch + home indicator) */}
+        {/* Toasts positioned well below the iOS notch/status bar.
+            On PWA with black-translucent, the notch is ~47px; we add 44px
+            minimum clearance so toasts don't get blurred behind the notch. */}
         <Toaster
           position="top-center"
           richColors
           closeButton
           style={{
-            paddingTop: "max(env(safe-area-inset-top), 0px)",
-            paddingBottom: "max(env(safe-area-inset-bottom), 0px)",
+            paddingTop: "calc(env(safe-area-inset-top, 0px) + 44px)",
+            paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 8px)",
+            zIndex: 9999,
           }}
           toastOptions={{
             style: {
               maxWidth: "calc(100vw - 1rem)",
+              zIndex: 9999,
             },
           }}
         />

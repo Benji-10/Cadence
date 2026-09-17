@@ -23,6 +23,7 @@ interface EventBlockProps {
   selected?: boolean;
   isGhost?: boolean;
   conflict?: boolean;
+  isHovering?: boolean;
   dragPreview?: DragPreview | null;
   resizePreview?: ResizePreview | null;
   didDragRef?: MutableRefObject<boolean>;
@@ -47,6 +48,7 @@ function EventBlockImpl({
   selected,
   isGhost,
   conflict,
+  isHovering,
   dragPreview,
   resizePreview,
   didDragRef,
@@ -113,10 +115,12 @@ function EventBlockImpl({
       }}
       className={cn(
         "group absolute z-10 cursor-pointer select-none overflow-hidden rounded-md text-left",
-        "transition-[box-shadow,transform] duration-150 hover:z-20 hover:shadow-lg active:cursor-grabbing",
-        "hover:-translate-y-0.5",
+        "transition-[box-shadow,transform] duration-150",
+        isHovering && "z-[100] scale-105 shadow-2xl ring-2 ring-emerald-500/60",
+        !isHovering && "hover:z-20 hover:shadow-lg hover:-translate-y-0.5",
+        "active:cursor-grabbing",
         selected && "ring-2 ring-offset-1 ring-offset-background",
-        isGhost && "opacity-60 ring-2 ring-dashed",
+        isGhost && "opacity-60 ring-2 ring-dashed z-[100]",
         conflict && !isGhost && "ring-2 ring-red-500 ring-offset-1 ring-offset-background"
       )}
       style={{
@@ -130,10 +134,10 @@ function EventBlockImpl({
         boxShadow: selected
           ? `0 0 0 2px ${color}, 0 6px 18px ${hexToRgba(color, 0.4)}`
           : `0 1px 2px ${hexToRgba(color, 0.3)}, inset 0 1px 0 ${hexToRgba("#ffffff", 0.18)}`,
-        // Allow vertical scrolling (pan-y) on touch so the calendar can scroll
-        // while touching events. Horizontal pan is blocked (that's for swipe
-        // nav which is handled at the container level). Once a long-press
-        // activates drag mode, the drag handler captures events.
+        // touch-action: pan-y — allow vertical scroll when touching events
+        // (before long-press activates). The drag hook uses setPointerCapture
+        // to take exclusive control once drag mode activates, which overrides
+        // the browser's scroll behavior for that pointer.
         touchAction: "pan-y",
       }}
     >
@@ -152,22 +156,22 @@ function EventBlockImpl({
         />
       )}
 
-      {/* resize handles — only for non-fixed events */}
-      {flexible && onHandlePointerDown && (
+      {/* resize handles — only show when the event is "hovering" (long-pressed) */}
+      {flexible && onHandlePointerDown && isHovering && (
         <>
           <span
             onPointerDown={(e) => onHandlePointerDown?.(event, "top", e)}
-            className="absolute -top-1 inset-x-0 h-3 cursor-ns-resize touch-none"
+            className="absolute -top-1 inset-x-0 h-3 cursor-ns-resize touch-none z-[110]"
             aria-hidden
           >
-            <span className="mx-auto mt-1 block h-1 w-8 rounded-full bg-black/20 group-hover:bg-black/35" />
+            <span className="mx-auto mt-1 block h-1 w-8 rounded-full bg-black/40" />
           </span>
           <span
             onPointerDown={(e) => onHandlePointerDown?.(event, "bottom", e)}
-            className="absolute -bottom-1 inset-x-0 h-3 cursor-ns-resize touch-none"
+            className="absolute -bottom-1 inset-x-0 h-3 cursor-ns-resize touch-none z-[110]"
             aria-hidden
           >
-            <span className="mx-auto mt-1 block h-1 w-8 rounded-full bg-black/20 group-hover:bg-black/35" />
+            <span className="mx-auto mt-1 block h-1 w-8 rounded-full bg-black/40" />
           </span>
         </>
       )}

@@ -638,3 +638,101 @@ VERIFICATION:
 - Needs real-device touch testing (agent-browser simulates mouse).
 - Repeating events still edit the parent (occurrence exceptions not yet implemented).
 - Next rounds: real-device testing, occurrence exceptions, split persistence.
+
+---
+Task ID: 25 (user feedback round 11 — click-to-edit title/location + custom time wheel)
+Agent: main
+Task: Title and location as click-to-edit text fields; custom compact time selector.
+
+## Current project status / assessment
+- App stable. Three UX improvements delivered.
+
+## Completed modifications / verification results
+1. **Title: click-to-edit** — the title now renders as a plain text button ("Computer Organization") until you tap it, then it becomes an editable input with autoFocus. onBlur returns it to text mode. Empty title shows "Tap to add title…" placeholder. VERIFIED: tapping "Computer Organization" button → became `textbox "Title"` with the text.
+
+2. **Custom TimeWheel** (`time-wheel.tsx`) — replaced both native `<select>` and shadcn Select (both had the oversized chevron problem) with a compact custom component:
+   - **Collapsed state**: a small button showing "8:00 AM" (no chevron, no wasted space)
+   - **Expanded state** (on tap): two scrollable columns (hour 56px wide, minute 36px wide) with snap-scrolling and a center highlight bar. Scroll to pick, tap "Done" to collapse.
+   - No dropdown chevron eating up space; the full time is always visible.
+   - VERIFIED: tapping "8:00 AM" expanded to show scrollable "12 AM, 1 AM, 2 AM..." column with a "Done" button.
+
+3. **Location: already click-to-edit** — the mobile location field is already a button showing the value (tapping opens the drawer), and the desktop inline autocomplete doesn't autofocus. No further changes needed.
+
+TECHNICAL:
+- `TimeWheel` uses CSS snap-scroll (`snap-y snap-mandatory`) with 28px items and 5 visible rows.
+- `no-scrollbar` class hides the scrollbar for a clean look.
+- The `useDebounce` hook was recreated (it had been lost during prior edits).
+- `title-autocomplete.tsx` was recreated (also lost during prior edits).
+- `bun run lint` clean. No runtime errors across all 5 views.
+
+## Unresolved issues / risks + next-phase recommendations
+- Needs real-device touch testing.
+- Repeating events still edit the parent.
+- Next rounds: real-device testing, occurrence exceptions, split persistence.
+
+---
+Task ID: 26 (user feedback round 12 — drag fix with pointer capture, z-index, handles, notifications)
+Agent: main
+Task: Fix drag scroll-lock with setPointerCapture, z-index z-[100], resize handles only on hover, notification prompt.
+
+## Current project status / assessment
+- App stable. Fixed the core drag issues using setPointerCapture API.
+
+## Completed modifications / verification results
+1. **Drag scroll-lock via setPointerCapture** — the fundamental issue was that browsers cache `touch-action` at `touchstart` time, so changing it to `none` after a long-press timer fires doesn't take effect for the current gesture. Fix: in `beginActiveDrag`, call `element.setPointerCapture(pointerId)` which gives exclusive control of the pointer to the element, stopping the browser from scrolling. The pointermove handler also calls `e.preventDefault()` with `{ passive: false }` to suppress any remaining scroll. On pointerup, `releasePointerCapture` is called. This should fix the "first drag scrolls the calendar" and "swipe during drag switches day" issues.
+
+2. **Drag z-index: z-[100]** — hovered/active events now use `z-[100]` (was z-50) with `scale-105`, `shadow-2xl`, `ring-2 ring-emerald-500/60`. Ghost events also get `z-[100]`. Resize handles get `z-[110]`. This ensures the dragged event is above ALL other events.
+
+3. **Resize handles only on hover** — handles now render only when `isHovering === true` (i.e., during active long-press/drag mode). The `isHovering` prop was lost during a previous edit and has been restored to both the interface and destructuring. VERIFIED: `document.querySelectorAll('[class*=cursor-ns-resize]').length === 0` when not interacting.
+
+4. **Drag-to-create text selection** — added `select-none` class + `WebkitUserSelect: none` + `userSelect: none` to the DayColumn root, preventing the browser from highlighting grid lines during touch interactions.
+
+5. **Notification permission prompt** — on first load, a toast appears: "Enable notifications?" with an "Enable" action button. Stored in localStorage (`cadence-notif-prompted`) so it only shows once. If the user taps "Enable", `handleEnableNotifications` requests permission.
+
+TECHNICAL:
+- `setPointerCapture(pointerId)` is the key API — it redirects all subsequent pointer events for that touch to the captured element, preventing the browser's scroll handler from firing.
+- The `pointermove` listener uses `{ passive: false }` to allow `e.preventDefault()`.
+- `bun run lint` clean. No runtime errors across all 5 views.
+
+## Unresolved issues / risks + next-phase recommendations
+- Needs real-device touch testing (setPointerCapture behavior varies across mobile browsers).
+- Repeating events still edit the parent.
+- Next rounds: real-device testing, occurrence exceptions.
+
+---
+Task ID: 27 (user feedback round 13 — notifications fix + toast position + test button)
+Agent: main
+Task: Fix iOS PWA notifications (service worker API), toast position below notch, test notification in settings.
+
+## Current project status / assessment
+- App stable. Fixed the two notification-related issues.
+
+## Completed modifications / verification results
+1. **Notifications now use Service Worker API** (`notifications.ts` rewritten). iOS Safari PWAs do NOT support `new Notification()` — they require `serviceWorkerRegistration.showNotification()`. The new `NotificationManager.showNotification()` method:
+   - Tries `swRegistration.showNotification()` first (cached SW registration)
+   - Falls back to `navigator.serviceWorker.getRegistration()` if cache is null
+   - Last resort: `new Notification()` for desktop/Android
+   - The constructor caches the SW registration via `navigator.serviceWorker.ready` on init
+   This is the key fix — notifications will now actually fire on iOS PWA.
+
+2. **Toast position fixed** (`providers.tsx`). Changed `paddingTop` from `max(env(safe-area-inset-top), 0px)` to `calc(env(safe-area-inset-top, 0px) + 44px)`. The +44px ensures toasts appear well below the notch + status bar content, even on PWAs with `black-translucent` status bar style where the notch is ~47px.
+
+3. **Test notification button in Settings** (`settings-dialog.tsx`). Added a "Notifications" section with:
+   - "Enable notifications" button (requests permission if not granted, shows "Enabled ✓" if already granted)
+   - "Send test" button (disabled until permission is granted) — sends a test notification via `notifications.sendTest()`
+   - Helpful description text about what alerts are sent
+   VERIFIED: Settings dialog shows both buttons; "Send test" is disabled when permission isn't granted.
+
+4. **First-load notification prompt** (from round 26, still active). On first load, a toast appears: "Enable notifications?" with an "Enable" action. Stored in localStorage so it only shows once.
+
+TECHNICAL:
+- `showNotification` is async and returns a Promise; the `fire()` method doesn't await it (fire-and-forget) to avoid blocking the tick loop.
+- `sendTest()` is also async and can be awaited by the caller.
+- The SW registration is cached in `this.swRegistration` on init via `navigator.serviceWorker.ready`.
+- `bun run lint` clean. No runtime errors across all 5 views.
+
+## Unresolved issues / risks + next-phase recommendations
+- Needs real iOS device testing to verify `showNotification` actually fires.
+- The SW registration might not be ready on first load; the `ready` promise resolves it but there could be a race.
+- Repeating events still edit the parent.
+- Next rounds: real-device testing, occurrence exceptions.

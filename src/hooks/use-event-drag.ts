@@ -75,12 +75,19 @@ export function useEventDrag(opts: UseEventDragOptions) {
   // Begin active drag (called after long-press fires, or immediately for mouse).
   // The interaction state is set by the CALLER (with the correct viaLongPress flag).
   const beginActiveDrag = useCallback(
-    (event: CalendarEvent, clientX: number, clientY: number, _isTouch: boolean) => {
+    (event: CalendarEvent, clientX: number, clientY: number, isTouch: boolean, pointerId?: number, element?: HTMLElement) => {
       // NOTE: didDragRef starts false; it's only set true inside onMove when
       // the pointer actually moves. This way a mouse click (down+up, no move)
       // won't be treated as a drag, and onClick can open the edit sheet.
 
+      // Capture the pointer on the element so the browser stops scrolling
+      // and sends all subsequent pointermove/up events to us exclusively.
+      if (isTouch && element && pointerId !== undefined) {
+        try { element.setPointerCapture(pointerId); } catch {}
+      }
+
       const onMove = (e: PointerEvent) => {
+        e.preventDefault(); // suppress any remaining browser scroll
         const deltaY = e.clientY - clientY;
         const deltaX = e.clientX - clientX;
         if (Math.abs(deltaY) > 5 || Math.abs(deltaX) > 8) didDragRef.current = true;
@@ -111,6 +118,10 @@ export function useEventDrag(opts: UseEventDragOptions) {
       const onUp = () => {
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
+        // Release pointer capture
+        if (isTouch && element && pointerId !== undefined) {
+          try { element.releasePointerCapture(pointerId); } catch {}
+        }
         document.body.classList.remove("dragging");
         setInteraction({ mode: "idle", eventId: null, viaLongPress: false });
         setDrag((current) => {
@@ -122,7 +133,7 @@ export function useEventDrag(opts: UseEventDragOptions) {
       };
 
       document.body.classList.add("dragging");
-      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointermove", onMove, { passive: false });
       window.addEventListener("pointerup", onUp);
     },
     []
@@ -131,6 +142,8 @@ export function useEventDrag(opts: UseEventDragOptions) {
   const onPointerDown = useCallback(
     (event: CalendarEvent, e: React.PointerEvent) => {
       const isTouch = e.pointerType === "touch";
+      const element = e.currentTarget as HTMLElement;
+      const pointerId = e.pointerId;
 
       if (isTouch) {
         // TOUCH: start observing. Do NOT preventDefault/stopPropagation — let
@@ -153,7 +166,9 @@ export function useEventDrag(opts: UseEventDragOptions) {
               event,
               originRef.current.x,
               originRef.current.y,
-              true
+              true,
+              pointerId,
+              element
             );
             originRef.current = null;
           }

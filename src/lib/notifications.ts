@@ -1,6 +1,11 @@
 // Browser notification scheduler. Fires alerts at the offsets configured on
 // each event (default -30 / -10 / 0 minutes). Polls every 20s while the tab is
-// open; the service worker handles persistence across reloads for installed PWAs.
+// open.
+//
+// IMPORTANT: iOS Safari PWAs do NOT support `new Notification()`. They require
+// `serviceWorkerRegistration.showNotification()` instead. This manager uses
+// the service worker API when available, falling back to `new Notification()`
+// for desktop/Android.
 
 import type { CalendarEvent } from "./types";
 
@@ -10,9 +15,23 @@ type AlertCb = (eventId: string, offsetMins: number) => void;
 
 class NotificationManager {
   private events: CalendarEvent[] = [];
-  private fired = new Set<string>(); // `${eventId}|${offset}`
+  private fired = new Set<string>(); // `${eventId}|${offset}|${fireAt}`
   private timer: ReturnType<typeof setInterval> | null = null;
   private onAlert: AlertCb | null = null;
+  private swRegistration: ServiceWorkerRegistration | null = null;
+
+  constructor() {
+    // Cache the service worker registration for showNotification.
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistration().then((reg) => {
+        this.swRegistration = reg;
+      });
+      // Re-check after registration completes (SW might still be installing).
+      navigator.serviceWorker.ready.then((reg) => {
+        this.swRegistration = reg;
+      });
+    }
+  }
 
   setEvents(events: CalendarEvent[]) {
     this.events = events;
@@ -65,14 +84,53 @@ class NotificationManager {
       .filter(Boolean)
       .join(" · ");
 
-    try {
-      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        new Notification(title, { body, tag: key(ev, offsetMins), icon: "/icon-192.png" });
-      }
-    } catch {
-      // ignore — some browsers require a service worker registration
-    }
+    this.showNotification(title, {
+      body,
+      tag: `${ev.id}-${offsetMins}`,
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      data: { id: ev.id },
+    });
     this.onAlert?.(ev.id, offsetMins);
+  }
+
+  // Show a notification using the best available API:
+  //   1. Service Worker (required for iOS Safari PWA, works when tab is backgrounded)
+  //   2. new Notification() (desktop Chrome/Firefox, Android)
+  async showNotification(title: string, options?: NotificationOptions & { tag?: string; data?: unknown }) {
+    if (typeof Notification === "undefined") return;
+    if (Notification.permission !== "granted") return;
+
+    // Try service worker first (iOS PWA requires this).
+    if (this.swRegistration) {
+      try {
+        await this.swRegistration.showNotification(title, options);
+        return;
+      } catch {
+        // fall through to new Notification()
+      }
+    }
+
+    // Fallback: try to get SW registration on-the-fly.
+    if ("serviceWorker" in navigator) {
+      try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) {
+          this.swRegistration = reg;
+          await reg.showNotification(title, options);
+          return;
+        }
+      } catch {
+        // fall through
+      }
+    }
+
+    // Last resort: new Notification() (desktop/Android).
+    try {
+      new Notification(title, options as NotificationOptions);
+    } catch {
+      // silently fail — no notification API available
+    }
   }
 
   async requestPermission(): Promise<boolean> {
@@ -81,10 +139,16 @@ class NotificationManager {
     const perm = await Notification.requestPermission();
     return perm === "granted";
   }
-}
 
-function key(ev: CalendarEvent, offset: number) {
-  return `${ev.id}-${offset}`;
+  // Send a test notification (used by the Settings dialog).
+  async sendTest() {
+    await this.showNotification("Cadence test notification", {
+      body: "If you can see this, notifications are working! 🎉",
+      tag: "cadence-test",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+    });
+  }
 }
 
 // Singleton.

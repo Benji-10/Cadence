@@ -76,6 +76,8 @@ import { useTemplates } from "@/lib/templates-store";
 import { TemplatesBar } from "./templates-bar";
 import { LocationAutocomplete } from "./location-autocomplete";
 import { LocationDrawer } from "./location-drawer";
+import { TitleAutocomplete } from "./title-autocomplete";
+import { TimeWheel } from "./time-wheel";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -310,6 +312,7 @@ function EditForm({
   const [locationType, setLocationType] = useState<LocationType>(initial.locationType);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [locationDrawerOpen, setLocationDrawerOpen] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
 
   const inferred = useMemo(() => inferMetaFromTitle(title), [title]);
   const calendarsById = useMemo(
@@ -545,15 +548,55 @@ function EditForm({
   return (
     <>
       <div className="cal-scroll flex-1 overflow-y-auto px-4 py-4">
-        {/* Title */}
+        {/* Title — click-to-edit: shows as text until tapped */}
         <div className="mb-3">
-          <Input
-            value={title}
-            onChange={(e) => handleTitleChange(e.target.value)}
-            placeholder="Title"
-            autoFocus={state?.mode === "create"}
-            className="h-12 border-0 px-0 text-lg font-semibold shadow-none focus-visible:ring-0"
-          />
+          {editingTitle ? (
+            <Input
+              value={title}
+              onChange={(e) => handleTitleChange(e.target.value)}
+              onBlur={() => setEditingTitle(false)}
+              placeholder="Title"
+              autoFocus
+              className="h-12 border-0 px-0 text-lg font-semibold shadow-none focus-visible:ring-0"
+            />
+          ) : (
+            <button
+              onClick={() => setEditingTitle(true)}
+              className={cn(
+                "flex h-12 w-full items-center px-0 text-left text-lg font-semibold",
+                !title.trim() && "text-muted-foreground"
+              )}
+            >
+              {title.trim() || "Tap to add title…"}
+            </button>
+          )}
+          {/* Type-ahead: search previous events, select to copy all data */}
+          {state?.mode === "create" && title.trim().length >= 2 && (
+            <TitleAutocomplete
+              value={title}
+              onChange={() => {}}
+              onSelect={(ev) => {
+                setTitle(ev.title);
+                setAllDay(ev.allDay);
+                setCalendarId(ev.calendarId);
+                setColor(ev.color ?? null);
+                setLocation(ev.location ?? "");
+                setTravelMins(ev.travelMins ?? 0);
+                setAlerts(ev.alerts ?? []);
+                setFreq(ev.recurrence?.freq ?? "none");
+                setIntervalN(ev.recurrence?.interval ?? 1);
+                setUntil(ev.recurrence?.until ?? null);
+                setPriority(ev.priority ?? 0);
+                setNotes(ev.notes ?? "");
+                setFlexibility(ev.flexibility);
+                setMinChunkMins(ev.minChunkMins);
+                setAllowOverlap(ev.allowOverlap);
+                setLocationType(ev.locationType);
+                toast.success(`Copied details from "${ev.title}".`);
+              }}
+              calendarsById={calendarsById}
+            />
+          )}
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <Badge
               variant="secondary"
@@ -596,21 +639,11 @@ function EditForm({
                     />
                   </PopoverContent>
                 </Popover>
-                <Select
-                  value={format(startDate, "HH:mm")}
-                  onValueChange={(v) => setStart(mergeTime(startDate, v).toISOString())}
-                >
-                  <SelectTrigger size="sm" className="h-7 w-[78px] text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {HOURS_15MIN.map((h) => (
-                      <SelectItem key={h.value} value={h.value} className="text-xs">
-                        {h.value}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <TimeWheel
+                  hour={startDate.getHours()}
+                  minute={startDate.getMinutes()}
+                  onChange={(h, m) => setStart(mergeHM(startDate, h, m).toISOString())}
+                />
               </div>
             </Row>
 
@@ -630,21 +663,11 @@ function EditForm({
                     />
                   </PopoverContent>
                 </Popover>
-                <Select
-                  value={format(endDate, "HH:mm")}
-                  onValueChange={(v) => setEnd(mergeTime(endDate, v).toISOString())}
-                >
-                  <SelectTrigger size="sm" className="h-7 w-[78px] text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {HOURS_15MIN.map((h) => (
-                      <SelectItem key={h.value} value={h.value} className="text-xs">
-                        {h.value}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <TimeWheel
+                  hour={endDate.getHours()}
+                  minute={endDate.getMinutes()}
+                  onChange={(h, m) => setEnd(mergeHM(endDate, h, m).toISOString())}
+                />
               </div>
             </Row>
 

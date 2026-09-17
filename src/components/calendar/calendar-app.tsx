@@ -239,6 +239,25 @@ export function CalendarApp() {
     else toast.error("Couldn't enable notifications — blocked by browser.");
   }, []);
 
+  // Show a notification permission prompt on first load (once).
+  useEffect(() => {
+    if (typeof Notification === "undefined") return;
+    if (Notification.permission !== "default") return;
+    if (localStorage.getItem("cadence-notif-prompted") === "1") return;
+    localStorage.setItem("cadence-notif-prompted", "1");
+    const timer = setTimeout(() => {
+      toast("Enable notifications?", {
+        description: "Get alerts 30 min, 10 min, and when events start.",
+        action: {
+          label: "Enable",
+          onClick: () => handleEnableNotifications(),
+        },
+        duration: 10000,
+      });
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [handleEnableNotifications]);
+
   // ---- Toolbar callbacks ----
   const handlePrev = () => {
     if (view === "week") setWeekStart((d) => addWeeks(d, -1));

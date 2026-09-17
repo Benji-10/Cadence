@@ -158,10 +158,15 @@ export function DayColumn({
     <div
       ref={columnRef}
       className={cn(
-        "relative flex-1 border-r border-border last:border-r-0",
+        "relative flex-1 border-r border-border last:border-r-0 select-none",
         isToday && "bg-accent/30"
       )}
-      style={{ height: 24 * HH, touchAction: "pan-y" }}
+      style={{
+        height: 24 * HH,
+        touchAction: "pan-y",
+        WebkitUserSelect: "none",
+        userSelect: "none",
+      }}
       onPointerDown={(e) => {
         drag.resetDrag();
         // For touch on empty space, start a long-press timer to create.
@@ -298,6 +303,7 @@ export function DayColumn({
             calendarsById={calendarsById}
             selected={selectedEventId === event.id}
             conflict={conflictIds.has(event.id)}
+            isHovering={drag.interaction.mode === "active" && drag.interaction.eventId === event.id}
             dragPreview={drag.drag}
             resizePreview={resize.resize}
             didDragRef={drag.didDragRef}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Settings as SettingsIcon, Bell, Calendar, Clock, Eye } from "lucide-react";
+import { Settings as SettingsIcon, Bell, Calendar, Clock, Eye, BellRing } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -21,6 +21,7 @@ import {
 import { useCalendars } from "@/hooks/use-calendar-data";
 import { useMounted } from "@/hooks/use-mounted";
 import { useSettings } from "@/lib/settings-store";
+import { notifications } from "@/lib/notifications";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -201,6 +202,58 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               checked={s.autoScrollToNow}
               onCheckedChange={s.setAutoScrollToNow}
             />
+          </section>
+
+          {/* Notifications */}
+          <section>
+            <SectionLabel icon={<BellRing className="size-3.5" />} label="Notifications" />
+            <div className="rounded-lg border border-border/60 bg-card p-3">
+              <p className="mb-2 text-xs text-muted-foreground">
+                Get alerts 30 min, 10 min, and when events start. Requires
+                notification permission.
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 gap-1.5 text-xs"
+                  onClick={async () => {
+                    if (typeof Notification === "undefined") {
+                      toast.error("Notifications not supported.");
+                      return;
+                    }
+                    if (Notification.permission !== "granted") {
+                      const granted = await notifications.requestPermission();
+                      if (!granted) {
+                        toast.error("Permission denied. Enable in iOS Settings → Safari → Notifications.");
+                        return;
+                      }
+                      toast.success("Notifications enabled!");
+                    } else {
+                      toast.info("Notifications already enabled.");
+                    }
+                  }}
+                >
+                  <Bell className="size-3" />
+                  {typeof Notification !== "undefined" && Notification.permission === "granted"
+                    ? "Enabled ✓"
+                    : "Enable notifications"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 gap-1.5 text-xs"
+                  disabled={typeof Notification === "undefined" || Notification.permission !== "granted"}
+                  onClick={async () => {
+                    await notifications.sendTest();
+                    toast.success("Test notification sent — check your device!");
+                  }}
+                >
+                  <BellRing className="size-3" />
+                  Send test
+                </Button>
+              </div>
+            </div>
           </section>
         </div>
 
