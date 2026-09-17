@@ -128,15 +128,13 @@
 }
 
 @layer utilities {
-  /* Safe-area insets for notched iPhones in PWA mode. These use MARGIN
-     instead of padding so the element itself shifts down, rather than just
-     adding internal padding that gets absorbed by fixed heights. */
+  /* Safe-area insets for notched iPhones in PWA mode. Using margin only
+     (no padding) to keep the shift minimal — the status bar is ~47px but
+     we only need the content to clear it, not double-apply. */
   .safe-top {
     margin-top: env(safe-area-inset-top, 0px);
-    padding-top: env(safe-area-inset-top, 0px);
   }
   .safe-bottom {
-    margin-bottom: env(safe-area-inset-bottom, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   .safe-left {
@@ -144,6 +142,14 @@
   }
   .safe-right {
     margin-right: env(safe-area-inset-right, 0px);
+  }
+
+  /* iOS-style scroll: momentum scrolling + bounce at edges.
+     overscroll-behavior: contain prevents the scroll from chaining to
+     the parent, so the calendar scrolls independently with bounce. */
+  .ios-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
 
   .no-scrollbar::-webkit-scrollbar {

@@ -28,13 +28,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
     >
       <QueryClientProvider client={client}>
         {children}
-        {/* Sonner's `offset` prop adds margin from the viewport edge.
-            We use a CSS calc with env(safe-area-inset-top) + 56px so toasts
-            appear well below the iOS notch + status bar on PWAs.
-            On desktop (no safe-area), this resolves to 56px which is fine. */}
+        {/* Toasts: push down just enough to clear the notch. The safe-area
+            margin on the root wrapper already shifts the app down; toasts
+            just need a small extra gap so they don't touch the status bar. */}
         <style>{`
           [data-sonner-toaster] {
-            top: calc(env(safe-area-inset-top, 0px) + 56px) !important;
+            top: calc(env(safe-area-inset-top, 0px) + 8px) !important;
           }
         `}</style>
         <Toaster

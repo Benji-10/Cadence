@@ -761,3 +761,32 @@ TECHNICAL:
 - Needs real iOS device testing to verify the notch clearance is sufficient.
 - Repeating events still edit the parent.
 - Next rounds: real-device testing, occurrence exceptions.
+
+---
+Task ID: 29 (user feedback round 15 — reduce notch padding + scroll bounce)
+Agent: main
+Task: Reduce safe-area padding (was too much), add iOS scroll bounce.
+
+## Current project status / assessment
+- App stable. Two refinements: reduced the safe-area margin to just `env()` (no double padding), and added iOS momentum scroll + bounce.
+
+## Completed modifications / verification results
+1. **Reduced safe-area padding** — `safe-top` now uses `margin-top: env(safe-area-inset-top, 0px)` ONLY (removed the duplicate `padding-top`). `safe-bottom` uses `padding-bottom` only (removed `margin-bottom`). This gives exactly one notch-height of clearance (~47px on iPhone) instead of double-applying. The app sits just below the status bar, not too far down.
+
+2. **Toast position reduced** — changed the toast CSS override from `top: calc(env(safe-area-inset-top, 0px) + 56px)` to `top: calc(env(safe-area-inset-top, 0px) + 8px)`. Since the root wrapper's `safe-top` margin already shifts everything down by the notch height, toasts only need 8px of extra clearance to avoid touching the status bar.
+
+3. **iOS scroll bounce** — added a new `.ios-scroll` CSS utility class with:
+   - `-webkit-overflow-scrolling: touch` — enables momentum scrolling on iOS
+   - `overscroll-behavior: contain` — allows the scroll to bounce at edges instead of chaining to the parent (the "spring effect" the user requested)
+   
+   Applied to the DayView and WeekView scroll containers. Also removed the inline `overscrollBehaviorY: "none"` style that was overriding the bounce behavior.
+
+TECHNICAL:
+- `overscroll-behavior: contain` is the key property — it tells the browser "when the user scrolls past the edge, bounce within this container instead of scrolling the parent."
+- `-webkit-overflow-scrolling: touch` is a legacy iOS property that enables momentum scrolling; on modern iOS it's the default but doesn't hurt.
+- `bun run lint` clean. No runtime errors across all 5 views.
+
+## Unresolved issues / risks + next-phase recommendations
+- Needs real iOS device testing to verify the bounce effect and notch clearance.
+- Repeating events still edit the parent.
+- Next rounds: real-device testing, occurrence exceptions.

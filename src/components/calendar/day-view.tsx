@@ -217,8 +217,7 @@ export function DayView({
 
       <div
         ref={scrollContainerRef}
-        className="cal-scroll min-h-0 flex-1 overflow-auto"
-        style={{ overscrollBehaviorY: "none" }}
+        className="cal-scroll ios-scroll min-h-0 flex-1 overflow-auto"
         onTouchStart={swipe.onTouchStart}
         onTouchEnd={swipe.onTouchEnd}
         onTouchMove={pinch.onTouchMove}
