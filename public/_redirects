@@ -1,0 +1,11 @@
+# Service worker — serve as-is, no Next.js routing
+/sw.js
+  200
+
+# Manifest
+/manifest.webmanifest
+  200
+
+# Icons
+/icon-*.png
+  200

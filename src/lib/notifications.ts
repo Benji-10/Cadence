@@ -21,15 +21,34 @@ class NotificationManager {
   private swRegistration: ServiceWorkerRegistration | null = null;
 
   constructor() {
-    // Cache the service worker registration for showNotification.
+    // Cache the service worker registration + register periodic sync.
     if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
       navigator.serviceWorker.getRegistration().then((reg) => {
         this.swRegistration = reg;
+        this.registerPeriodicSync(reg);
       });
-      // Re-check after registration completes (SW might still be installing).
       navigator.serviceWorker.ready.then((reg) => {
         this.swRegistration = reg;
+        this.registerPeriodicSync(reg);
       });
+    }
+  }
+
+  // Register periodic background sync so alerts fire even when the PWA is closed.
+  private async registerPeriodicSync(reg: ServiceWorkerRegistration | null) {
+    if (!reg) return;
+    try {
+      if ("periodicSync" in reg) {
+        const status = await (reg as any).periodicSync.getPermissionState?.();
+        if (status === "granted") {
+          await (reg as any).periodicSync.register("check-alerts", {
+            minInterval: 15 * 60 * 1000, // 15 min
+          });
+        }
+      }
+    } catch {
+      // periodicSync not supported — the page-based polling + message-based
+      // scheduling still works while the tab is open.
     }
   }
 
@@ -41,7 +60,49 @@ class NotificationManager {
       const ts = Number(key.split("|")[2] || 0);
       if (ts < cutoff) this.fired.delete(key);
     }
+
+    // Schedule alerts via the service worker (for when the tab is backgrounded).
+    this.scheduleViaServiceWorker(events);
+
     this.tick();
+  }
+
+  // Send SCHEDULE_ALERT messages to the SW for all upcoming alerts within 24h.
+  // The SW uses setTimeout to fire showNotification at the right time, even
+  // if the tab is backgrounded (as long as the SW stays alive).
+  private scheduleViaServiceWorker(events: CalendarEvent[]) {
+    if (!this.swRegistration?.active) return;
+    const now = Date.now();
+    const maxFuture = now + 24 * 60 * 60 * 1000; // 24h ahead
+
+    for (const ev of events) {
+      const startMs = new Date(ev.start).getTime();
+      if (startMs > maxFuture) continue; // too far ahead
+
+      for (const offset of ev.alerts ?? []) {
+        const fireAt = startMs + offset * 60 * 1000;
+        if (fireAt <= now || fireAt > maxFuture) continue;
+
+        const tag = `${ev.id}-${offset}`;
+        const when = offset === 0 ? "starts now" : `starts in ${Math.abs(offset)} min`;
+        const title = `${ev.title} ${when}`;
+        const body = [
+          ev.location ? `📍 ${ev.location}` : null,
+          offset === 0 ? "It's starting now." : `Heads up — beginning ${Math.abs(offset)} minutes.`,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+
+        this.swRegistration.active.postMessage({
+          type: "SCHEDULE_ALERT",
+          id: ev.id,
+          title,
+          body,
+          fireAt,
+          tag,
+        });
+      }
+    }
   }
 
   setAlertCallback(cb: AlertCb | null) {

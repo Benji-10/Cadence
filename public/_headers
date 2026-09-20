@@ -1,0 +1,13 @@
+# Service worker — must be served with correct MIME type and no caching
+/sw.js
+  Content-Type: application/javascript; charset=utf-8
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# Manifest
+/manifest.webmanifest
+  Content-Type: application/manifest+json
+  Cache-Control: public, max-age=3600
+
+# Icons — cache for a long time
+/icon-*.png
+  Cache-Control: public, max-age=31536000, immutable

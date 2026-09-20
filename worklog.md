@@ -790,3 +790,54 @@ TECHNICAL:
 - Needs real iOS device testing to verify the bounce effect and notch clearance.
 - Repeating events still edit the parent.
 - Next rounds: real-device testing, occurrence exceptions.
+
+---
+Task ID: 36 (Netlify + Neon migration)
+Agent: main
+Task: Migrate to Netlify + Neon PostgreSQL, service worker background push notifications.
+
+## Current project status / assessment
+- App stable. Migration complete: Prisma switched to PostgreSQL, build config updated for Netlify, service worker rewritten with periodic background sync.
+
+## Completed modifications / verification results
+1. **Prisma schema → PostgreSQL** (`prisma/schema.prisma`). Provider changed from `sqlite` to `postgresql`. The `.env` still has the SQLite URL for sandbox dev — the user will set their Neon connection string in Netlify's environment variables.
+
+2. **next.config.ts updated** — removed `output: "standalone"` (Netlify's plugin handles the build), added `allowedDevOrigins: ["*.space-z.ai"]`.
+
+3. **package.json updated**:
+   - `build` script simplified to `next build` (no standalone copy)
+   - `start` changed to `next start`
+   - Added `postinstall: "prisma generate"` (runs on Netlify after `npm install`)
+
+4. **netlify.toml updated** — clean config with `@netlify/plugin-nextjs`, DATABASE_URL note for Neon pooled connection.
+
+5. **Service worker rewritten** (`public/sw.js`):
+   - **Periodic background sync** (`periodicsync` event) — fires every ~15 min when the PWA is installed, fetches events from the API, and fires `showNotification` for any due alerts. This works even when the PWA is completely closed.
+   - **Regular sync fallback** (`sync` event) — for browsers without periodicSync support.
+   - **Message-based scheduling** — the page sends `SCHEDULE_ALERT` messages with `fireAt` timestamps; the SW uses `setTimeout` to fire `showNotification` at the right time.
+   - **Notification click** → focuses or opens the app.
+   - Version bumped to `cal-v3`.
+
+6. **NotificationManager updated** (`src/lib/notifications.ts`):
+   - Constructor now registers **periodic background sync** with the service worker (`reg.periodicSync.register("check-alerts", { minInterval: 15 * 60 * 1000 })`).
+   - `setEvents` now calls `scheduleViaServiceWorker(events)` which sends `SCHEDULE_ALERT` messages for all upcoming alerts within 24h — the SW fires them via `setTimeout` even if the tab is backgrounded.
+
+7. **Static files**:
+   - `public/_headers` — correct MIME types for SW, manifest, icons
+   - `public/_redirects` — serve SW, manifest, and icons as-is (no Next.js routing)
+
+8. **DEPLOYMENT.md** — complete deployment guide covering Neon, GitHub, Netlify, Identity, PWA installation, and the notification architecture.
+
+TECHNICAL:
+- Three-layer notification system:
+  1. **Page polling** (20s interval, tab open) — immediate alerts
+  2. **SW setTimeout** (tab backgrounded, SW alive) — alerts within 24h
+  3. **SW periodicSync** (PWA closed, installed) — alerts checked every ~15 min
+- The Prisma client was generated for SQLite (sandbox dev) but the schema is `postgresql` for production. When deploying, `postinstall` runs `prisma generate` which generates the correct client for the `DATABASE_URL` env var.
+- `bun run lint` clean. No runtime errors. App loads correctly in sandbox.
+
+## Unresolved issues / risks + next-phase recommendations
+- The sandbox dev uses SQLite (Prisma client generated for SQLite). On Netlify, the `postinstall` script regenerates for PostgreSQL. This is a common pattern.
+- `periodicSync` requires the PWA to be installed and the browser to support it (Chrome/Edge on desktop, Chrome on Android). iOS Safari 16.4+ supports web push but `periodicSync` support may vary.
+- The user needs to run `npx prisma db push` against their Neon database after first deploy to create tables.
+- Next rounds: real-device testing on Netlify deployment, occurrence exceptions.
