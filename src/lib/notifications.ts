@@ -58,18 +58,41 @@ class NotificationManager {
   private async subscribeToPush(reg: ServiceWorkerRegistration | null) {
     if (!reg) return;
     try {
+      console.log("[notifications] Checking for existing push subscription...");
       const existing = await reg.pushManager.getSubscription();
-      if (existing) return;
+      if (existing) {
+        console.log("[notifications] ✅ Already subscribed to push — endpoint:", existing.endpoint.substring(0, 60));
+        // Re-send to server in case it was lost (e.g. DB was reset)
+        await fetch("/api/push/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            endpoint: existing.endpoint,
+            keys: {
+              p256dh: this.arrayBufferToBase64(existing.getKey("p256dh")),
+              auth: this.arrayBufferToBase64(existing.getKey("auth")),
+            },
+          }),
+        }).then(r => console.log("[notifications] Re-sent subscription to server:", r.status))
+          .catch(e => console.warn("[notifications] Failed to re-send subscription:", String(e)));
+        return;
+      }
 
       const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-      if (!vapidKey) return;
+      if (!vapidKey) {
+        console.warn("[notifications] ⚠️ NEXT_PUBLIC_VAPID_PUBLIC_KEY not set — push notifications disabled");
+        return;
+      }
+      console.log("[notifications] VAPID key found, subscribing to push...");
 
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: this.urlBase64ToUint8Array(vapidKey),
       });
 
-      await fetch("/api/push/subscribe", {
+      console.log("[notifications] ✅ Subscribed to push — endpoint:", sub.endpoint.substring(0, 60));
+
+      const res = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -80,8 +103,10 @@ class NotificationManager {
           },
         }),
       });
-    } catch {
-      // Push not supported or permission denied
+      const data = await res.json();
+      console.log("[notifications] Server stored subscription — total:", data.totalSubscriptions);
+    } catch (e) {
+      console.error("[notifications] ❌ Push subscription failed:", String(e));
     }
   }
 
