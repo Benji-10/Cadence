@@ -677,6 +677,7 @@ export function CalendarApp() {
           onToday={handleToday}
           onAutoOptimize={handleAutoOptimize}
           onReseed={handleReseed}
+          onNewEvent={handleNewEvent}
           notificationPermission={notifPerm}
           onEnableNotifications={handleEnableNotifications}
           onOpenSearch={() => setSearchOpen(true)}

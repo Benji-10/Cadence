@@ -827,3 +827,120 @@ Task: Rebuild the entire VAPID web push pipeline that was lost during prior edit
 4. User taps → SW `notificationclick` → opens PWA
 
 `bun run lint` clean. All components verified present.
+
+---
+Task ID: 46 (user feedback round 16 — re-add + button + fix TimeWheel save)
+Agent: main
+Task: Re-add the missing "+" (New event) button and fix the TimeWheel not saving scrolled times.
+
+## Current project status / assessment
+- App stable. Two regressions fixed: (1) the only "New event" button lived in the desktop-only Sidebar, so mobile users had no visible create affordance; (2) the TimeWheel component referenced a `mergeHM` helper that was never defined, so every scroll threw a `ReferenceError` and the parent `start`/`end` state never updated — the old time was always saved.
+
+## Completed modifications / verification results
+1. **Re-added the `+` button to the Toolbar** (`toolbar.tsx`):
+   - Added a new `onNewEvent` prop to `ToolbarProps`.
+   - Rendered a prominent round `+` icon button (emerald, `size-8 sm:size-9`, `rounded-full`) immediately after the Day/Week/Month/Year/List segmented toggle and before "Auto-optimize". It is ALWAYS visible (no `hidden sm:` gating), so mobile users finally have a one-tap create affordance again.
+   - Wired `handleNewEvent` (already existed in `calendar-app.tsx`) through to the new prop.
+   - The Sidebar's desktop "New event" button is unchanged (still shows on lg+).
+
+2. **Fixed the TimeWheel save bug** (`edit-sheet.tsx`):
+   - Root cause: the `TimeWheel`'s `onChange` callback was `setStart(mergeHM(startDate, h, m).toISOString())`, but `mergeHM` was never defined in the file (only `mergeDate` and `mergeTime` existed). Every scroll fired `ReferenceError: mergeHM is not defined` inside the React event handler, so `setStart`/`setEnd` never ran and the form kept the original time.
+   - Added the missing `mergeHM(date, hour, minute)` helper next to `mergeDate`/`mergeTime` at the bottom of the file. It clones the date and calls `setHours(hour, minute, 0, 0)`, preserving year/month/day.
+
+VERIFICATION (agent-browser, desktop viewport):
+- Toolbar shows a new `button "New event" [ref=e16]` between the view toggle and "Auto-optimize".
+- Clicking it opens the "New event" sheet with default "7:00 PM" → "8:00 PM".
+- Expanded the Start TimeWheel, programmatically scrolled the hour column to index 21 (9 PM), dispatched a `scroll` event, waited for the 80 ms debounce, clicked "Done". The collapsed Start button then read **"9:00 PM"** (was "7:00 PM"). ✓
+- Expanded the End TimeWheel, scrolled the minute column to index 11 (55) and the hour column to index 22 (10 PM), clicked "Done". The collapsed End button then read **"10:55 PM"** (was "8:00 PM"), and Duration updated to **"1h 55m"**. ✓
+- Typed a title, clicked "Add event". Toast: "Event added". The sidebar's "Up next" list showed the saved event as **"Test TimeWheel Save, 21:00 to 22:55"**, confirming both scrolled times persisted to the database. ✓
+- Cleaned up: opened the event, clicked Delete, confirmed — toast: "Deleted". ✓
+- `bun run lint` clean. No runtime errors in `dev.log` (POST /api/events returned 201).
+
+## Unresolved issues / risks + next-phase recommendations
+- The TimeWheel's programmatic-scroll test depended on dispatching a synthetic `scroll` event; real touch-scroll on a device should fire the native scroll event natively, but this needs real-device verification.
+- Repeating events still edit the parent (occurrence exceptions not yet implemented).
+- Next rounds: real-device testing, occurrence exceptions, split persistence.
+
+---
+Task ID: 47 (user feedback round 17 — cron jitter misses at-start alerts)
+Agent: main
+Task: Fix the Netlify scheduled function missing "at start" alerts because of cron jitter (14:30 event missed when function fires at 14:31:06).
+
+## Current project status / assessment
+- App stable. The core problem was architectural: the old `check-alerts.ts` queried `start >= now`, so when the 15-min cron fired ~66s late, events that had just started were EXCLUDED from the query entirely. Combined with only a 5-min grace window for already-passed alerts, at-start alerts for 5-min-increment events were silently dropped. Fixed with a look-back window + a SentAlert dedup table. No increase in cron frequency needed (stays at 15 min — respects Netlify free tier).
+
+## Completed modifications / verification results
+
+### Architecture: look-back + dedup
+
+**The problem in detail:**
+- Netlify cron `*/15 * * * *` fires every 15 min, but the actual invocation time jitters (14:30:49, 14:31:06, …).
+- Old query: `start >= now AND start <= now + 15min` — an event that started 66s ago has `start < now` → excluded from query → at-start alert never fires.
+- Old grace: `now - fireAt < 5min` — alerts older than 5 min were permanently skipped.
+- Events at 5-min increments (14:05, 14:20, …) were especially prone to being missed.
+
+**The fix (3 pieces):**
+
+1. **Widened query window** (`alert-checker.ts`):
+   - `start ∈ [now − 20min, now + 45min]` — the 20-min look-back catches events that just started despite cron jitter. The 45-min look-ahead catches −30 alerts for upcoming events.
+   - This is the core fix: an event that started 66s ago is now FETCHED (was excluded before).
+
+2. **SentAlert dedup table** (Prisma `SentAlert` model):
+   - Keyed on `(eventId, offset, fireAt)` — uniquely identifies one logical alert occurrence.
+   - `fireAt` stored explicitly so editing an event's start time produces a fresh key (re-fires the alert) instead of being blocked by the stale record.
+   - Before sending, the function bulk-queries existing SentAlert rows for the pending keys and skips any already-sent.
+   - After sending, records the key. Unique constraint handles concurrent runs safely (P2002 = already recorded, ignored).
+   - Old rows pruned each run (TTL = 7 days) via `deleteMany({ sentAt: { lt: cutoff } })`.
+
+3. **Differentiated fire logic** (`shouldFireAlert()`):
+   - **At-start (offset 0)**: fires only when `start ≤ now + 2min` (never more than 2 min early — an "at start" alert 15 min before the event is misleading) AND `now − start < 25min` (not too stale). This means at-start alerts fire up to ~15 min late (next cron tick) but never fire absurdly early.
+   - **Before-alerts (offset < 0)**: fires if `fireAt ≤ now + 16min` (slightly > cron interval, so nothing is missed) AND `fireAt ≥ now − 25min` (not too stale). Slightly early is acceptable for a heads-up; dedup prevents repeats.
+
+### Files changed
+
+1. **`prisma/schema.prisma`** — added `SentAlert` model with `eventId`, `offset`, `fireAt`, `sentAt`. Unique on `(eventId, offset, fireAt)`, index on `fireAt`. Pushed to DB (temporarily switched provider to sqlite for local push, switched back to postgresql for production).
+
+2. **`src/lib/alert-checker.ts`** (NEW) — single source of truth for the alert-check logic. Exports `runAlertCheck()` (the full pipeline), `shouldFireAlert()` (pure timing decision, unit-testable), `ALERT_TIMING` constants, and `DueAlert`/`AlertCheckResult` types. Supports `dryRun` (skip push + SentAlert write) and `nowMs` (simulate a different "now" for testing).
+
+3. **`netlify/functions/check-alerts.ts`** — refactored to a thin wrapper that calls `runAlertCheck({ db })`. The logic lives in `src/lib/alert-checker.ts` so local testing exercises the exact same code path as production.
+
+4. **`src/app/api/debug/check-alerts/route.ts`** (NEW) — local debug route that calls `runAlertCheck({ db, dryRun: true, nowMs })`. Supports `?now=<epochMs>` to simulate boundary cases. Always dry-run (never triggers real push sends or SentAlert writes) — safe to call in production.
+
+5. **`src/components/calendar/settings-dialog.tsx`** — added a "Preview due alerts" button (ghost style, Radar icon) in the Notifications section. Calls the debug route and shows a toast with the count + list of alerts that would fire right now. Gives the user visibility into the server-side alert logic.
+
+### Verification (all via the debug route with simulated `now`)
+
+**Test 1 — cron fires 66s late (the user's exact scenario):**
+- Simulated `now = 19:31:06Z` for an event starting at 19:30:00Z (66s ago).
+- Result: the at-start alert (offset 0, fireAt 19:30) IS in `dueAlerts` → would fire. ✓
+- Old code would have excluded this event from the query (`start < now`) and the alert would NEVER fire.
+
+**Test 2 — event 30 min ago (too stale):**
+- Simulated `now = 20:00` for the 19:30 event (30 min ago).
+- Result: the event is NOT in `dueAlerts` (exceeds 25-min stale cutoff). ✓
+
+**Test 3 — event 5 min in the future (at-start not yet due):**
+- Simulated `now = 19:25` for the 19:30 event (5 min away).
+- Result: at-start alert NOT pending (beyond 2-min lead). ✓ But −10 and −30 alerts ARE pending (within their windows). ✓
+
+**Test 4 — event 1 min in the future (at-start within lead):**
+- Simulated `now = 19:29` for the 19:30 event (1 min away).
+- Result: at-start alert IS pending (within 2-min lead). ✓
+
+**Test 5 — direct API call:**
+- `GET /api/debug/check-alerts?dryRun=1` returned 2 events queried, 4 pending alerts, 0 sent, all correct titles/bodies/fireAt timestamps. ✓
+
+**Lint:** `bun run lint` clean. No runtime errors in dev.log.
+
+### Why this respects Netlify limits
+
+- Cron stays at 15 min (no frequency increase). 4 invocations/hour × 24 × 30 = 2,880/month — far under the 125k free-tier limit.
+- The look-back window absorbs cron jitter without needing more frequent runs.
+- The dedup table prevents double-firing when the look-back overlaps across runs.
+- Client-side `notifications.ts` (20s poll when PWA open) remains the primary precise timer; the server cron is the backup for when the PWA is closed.
+
+## Unresolved issues / risks + next-phase recommendations
+- **Recurring events**: the server cron queries raw `db.event.findMany` without expanding recurrences. A daily recurring event only fires alerts for the parent's `start`, not occurrences. The SentAlert dedup key `(eventId, offset, fireAt)` is forward-compatible with recurrence expansion — just need to import `expandAllRecurrence` into the alert checker.
+- **Before-alert earliness**: with a 15-min cron, a −10 alert can fire up to 16 min early (26 min before the event). This is inherent to the 15-min cadence. The client-side manager fires precisely when the PWA is open; the server is a backup.
+- **Push subscription required**: the dedup record is only created `if (anySent)` — i.e., at least one push sub received it. With 0 subs, alerts re-evaluate each run (harmless since there's nobody to send to).
+- Next rounds: expand recurrences in the alert checker, real-device push testing.

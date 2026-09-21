@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Settings as SettingsIcon, Bell, Calendar, Clock, Eye, BellRing } from "lucide-react";
+import { Settings as SettingsIcon, Bell, Calendar, Clock, Eye, BellRing, Radar } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -253,6 +253,39 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   Send test
                 </Button>
               </div>
+              {/* Preview which server-side alerts would fire right now.
+                  Calls the dry-run debug route so the user can verify the
+                  look-back + dedup logic is catching their events. */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-2 w-full gap-1.5 text-xs text-muted-foreground"
+                onClick={async () => {
+                  try {
+                    const res = await fetch("/api/debug/check-alerts?dryRun=1");
+                    const data = await res.json();
+                    const due = data.dueAlerts ?? [];
+                    if (due.length === 0) {
+                      toast.info("No alerts due right now", {
+                        description: `Queried ${data.eventsQueried} event(s) in the 20-min-look-back / 45-min-look-ahead window.`,
+                      });
+                    } else {
+                      const lines = due
+                        .map((a: { title: string; fireAt: string }) => `• ${a.title} @ ${new Date(a.fireAt).toLocaleTimeString()}`)
+                        .join("\n");
+                      toast.success(`${due.length} alert(s) would fire now`, {
+                        description: lines,
+                        duration: 8000,
+                      });
+                    }
+                  } catch {
+                    toast.error("Couldn't check alerts.");
+                  }
+                }}
+              >
+                <Radar className="size-3" />
+                Preview due alerts
+              </Button>
             </div>
           </section>
         </div>

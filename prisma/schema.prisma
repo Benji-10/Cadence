@@ -92,3 +92,24 @@ model PushSubscription {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// Deduplication log for sent push alerts. Keyed on (eventId, offset, fireAt)
+// so that each logical alert fires exactly once, even across overlapping cron
+// runs (the look-back window means the same event is seen by consecutive runs).
+//
+// - eventId + offset + fireAt uniquely identify one alert occurrence.
+// - fireAt is the derived fire time (event.start + offset minutes). Stored
+//   explicitly so that if an event's start time is edited, the new fireAt
+//   produces a fresh key (re-fires the alert) instead of being blocked by
+//   the stale record.
+// - Old rows are pruned by the cron function itself (TTL = 7 days).
+model SentAlert {
+  id      String   @id @default(cuid())
+  eventId String
+  offset  Int
+  fireAt  DateTime
+  sentAt  DateTime @default(now())
+
+  @@unique([eventId, offset, fireAt])
+  @@index([fireAt])
+}

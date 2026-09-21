@@ -49,6 +49,7 @@ interface ToolbarProps {
   onToday: () => void;
   onAutoOptimize: () => void;
   onReseed: () => void;
+  onNewEvent: () => void;
   notificationPermission?: NotificationPermission | "unsupported";
   onEnableNotifications: () => void;
   onOpenSearch: () => void;
@@ -71,6 +72,7 @@ export function Toolbar({
   onToday,
   onAutoOptimize,
   onReseed,
+  onNewEvent,
   notificationPermission,
   onEnableNotifications,
   onOpenSearch,
@@ -229,6 +231,18 @@ export function Toolbar({
               <span>List</span>
             </SegBtn>
           </div>
+
+          {/* New event — always visible (the sidebar's button is desktop-only) */}
+          <Button
+            variant="default"
+            size="icon"
+            onClick={onNewEvent}
+            aria-label="New event"
+            title="New event"
+            className="size-8 shrink-0 rounded-full bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 sm:size-9"
+          >
+            <Plus className="size-4 sm:size-5" />
+          </Button>
 
           {/* Auto-optimize — hidden on mobile (accessible via More) */}
           <Button

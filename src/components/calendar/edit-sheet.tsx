@@ -1184,6 +1184,14 @@ function mergeDate(date: Date, time: Date): Date {
   return d;
 }
 
+// Merge an hour (0-23) and minute (0-59) into an existing date, preserving
+// the date's year/month/day. Used by the TimeWheel's onChange callback.
+function mergeHM(date: Date, hour: number, minute: number): Date {
+  const d = new Date(date);
+  d.setHours(hour, minute, 0, 0);
+  return d;
+}
+
 function mergeTime(date: Date, hhmm: string): Date {
   const [h, m] = hhmm.split(":").map(Number);
   const d = new Date(date);

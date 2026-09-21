@@ -1,0 +1,1193 @@
+     1→"use client";
+     2→
+     3→import { useMemo, useState } from "react";
+     4→import {
+     5→  format,
+     6→  parseISO,
+     7→  differenceInMinutes,
+     8→  addMinutes,
+     9→} from "date-fns";
+    10→import { MapPin, Sparkles, Trash2, Wand2, Lock, GripVertical, Copy, Layers } from "lucide-react";
+    11→import {
+    12→  Sheet,
+    13→  SheetContent,
+    14→  SheetHeader,
+    15→  SheetTitle,
+    16→  SheetDescription,
+    17→  SheetFooter,
+    18→} from "@/components/ui/sheet";
+    19→import { Button } from "@/components/ui/button";
+    20→import { Input } from "@/components/ui/input";
+    21→import { Label } from "@/components/ui/label";
+    22→import { Textarea } from "@/components/ui/textarea";
+    23→import { Switch } from "@/components/ui/switch";
+    24→import { Badge } from "@/components/ui/badge";
+    25→import { Separator } from "@/components/ui/separator";
+    26→import {
+    27→  Select,
+    28→  SelectContent,
+    29→  SelectItem,
+    30→  SelectTrigger,
+    31→  SelectValue,
+    32→} from "@/components/ui/select";
+    33→import {
+    34→  Popover,
+    35→  PopoverContent,
+    36→  PopoverTrigger,
+    37→} from "@/components/ui/popover";
+    38→import { Calendar as DatePicker } from "@/components/ui/calendar";
+    39→import {
+    40→  Collapsible,
+    41→  CollapsibleContent,
+    42→  CollapsibleTrigger,
+    43→} from "@/components/ui/collapsible";
+    44→import {
+    45→  AlertDialog,
+    46→  AlertDialogAction,
+    47→  AlertDialogCancel,
+    48→  AlertDialogContent,
+    49→  AlertDialogDescription,
+    50→  AlertDialogFooter,
+    51→  AlertDialogHeader,
+    52→  AlertDialogTitle,
+    53→  AlertDialogTrigger,
+    54→} from "@/components/ui/alert-dialog";
+    55→import {
+    56→  inferMetaFromTitle,
+    57→  describeFlexibility,
+    58→} from "@/lib/scheduler";
+    59→import { categoryLabel, fmtDuration } from "@/lib/calendar-ui";
+    60→import type {
+    61→  Calendar,
+    62→  CalendarEvent,
+    63→  Flexibility,
+    64→  LocationType,
+    65→  RecurrenceRule,
+    66→} from "@/lib/types";
+    67→import {
+    68→  useCalendars,
+    69→  useCreateEvent,
+    70→  useDeleteEvent,
+    71→  useUpdateEvent,
+    72→  useSuggest,
+    73→} from "@/hooks/use-calendar-data";
+    74→import { useSettings } from "@/lib/settings-store";
+    75→import { useTemplates } from "@/lib/templates-store";
+    76→import { TemplatesBar } from "./templates-bar";
+    77→import { LocationAutocomplete } from "./location-autocomplete";
+    78→import { LocationDrawer } from "./location-drawer";
+    79→import { TitleAutocomplete } from "./title-autocomplete";
+    80→import { TimeWheel } from "./time-wheel";
+    81→import { useIsMobile } from "@/hooks/use-mobile";
+    82→import { toast } from "sonner";
+    83→import { cn } from "@/lib/utils";
+    84→
+    85→export interface EditSheetState {
+    86→  mode: "create" | "edit";
+    87→  event?: CalendarEvent;
+    88→  defaults?: { start: string; end: string; calendarId?: string };
+    89→}
+    90→
+    91→interface EditSheetProps {
+    92→  state: EditSheetState | null;
+    93→  open: boolean;
+    94→  onOpenChange: (open: boolean) => void;
+    95→  rangeStart: string;
+    96→  rangeEnd: string;
+    97→  events: CalendarEvent[];
+    98→  defaultCalendarId?: string;
+    99→}
+   100→
+   101→const COLOR_SWATCHES = [
+   102→  "#F59E0B", "#10B981", "#EF4444", "#06B6D4", "#22C55E", "#A855F7",
+   103→  "#EC4899", "#8B5CF6", "#14B8A6", "#F97316", "#0EA5E9", "#6366F1",
+   104→  "#3B82F6", "#9CA3AF", "#D1D5DB",
+   105→];
+   106→
+   107→const ALERT_PRESETS: { label: string; value: number }[] = [
+   108→  { label: "At start", value: 0 },
+   109→  { label: "5 min", value: -5 },
+   110→  { label: "10 min", value: -10 },
+   111→  { label: "15 min", value: -15 },
+   112→  { label: "30 min", value: -30 },
+   113→  { label: "1 hour", value: -60 },
+   114→  { label: "1 day", value: -60 * 24 },
+   115→];
+   116→
+   117→const RECURRENCE_FREQS = [
+   118→  { value: "none", label: "Never" },
+   119→  { value: "daily", label: "Daily" },
+   120→  { value: "weekly", label: "Weekly" },
+   121→  { value: "monthly", label: "Monthly" },
+   122→  { value: "yearly", label: "Yearly" },
+   123→];
+   124→
+   125→const PRIORITIES = [
+   126→  { value: "0", label: "None" },
+   127→  { value: "1", label: "Low" },
+   128→  { value: "5", label: "Medium" },
+   129→  { value: "9", label: "High" },
+   130→];
+   131→
+   132→const FLEX_OPTIONS: { value: Flexibility; label: string }[] = [
+   133→  { value: "fixed", label: "Fixed" },
+   134→  { value: "movable", label: "Movable" },
+   135→  { value: "flexible", label: "Flexible (splittable)" },
+   136→];
+   137→
+   138→const LOC_TYPES: { value: LocationType; label: string }[] = [
+   139→  { value: "any", label: "Any" },
+   140→  { value: "home", label: "Home" },
+   141→  { value: "campus", label: "Campus" },
+   142→  { value: "sports", label: "Sports centre" },
+   143→  { value: "out", label: "Out" },
+   144→];
+   145→
+   146→const HOURS_15MIN = Array.from({ length: 96 }, (_, i) => {
+   147→  const h = Math.floor(i / 4);
+   148→  const m = (i % 4) * 15;
+   149→  return { value: `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}` };
+   150→});
+   151→
+   152→export function EditSheet({
+   153→  state,
+   154→  open,
+   155→  onOpenChange,
+   156→  rangeStart,
+   157→  rangeEnd,
+   158→  events,
+   159→  defaultCalendarId,
+   160→}: EditSheetProps) {
+   161→  const isMobile = useIsMobile();
+   162→  const sheetSide: "bottom" | "right" = isMobile ? "bottom" : "right";
+   163→
+   164→  // Force a fresh form mount whenever the target event / create-defaults
+   165→  // change so initial useState values are read from the latest props.
+   166→  const formKey = useMemo(() => {
+   167→    if (state?.mode === "edit" && state.event) return `edit-${state.event.id}`;
+   168→    if (state?.mode === "create" && state.defaults) {
+   169→      return `create-${state.defaults.start}-${state.defaults.end}`;
+   170→    }
+   171→    return "blank";
+   172→  }, [state]);
+   173→
+   174→  return (
+   175→    <Sheet open={open} onOpenChange={onOpenChange}>
+   176→      <SheetContent
+   177→        side={sheetSide}
+   178→        className={cn(
+   179→          "gap-0 p-0",
+   180→          isMobile
+   181→            ? "h-[92vh] max-h-[92vh] rounded-t-2xl"
+   182→            : "w-full sm:max-w-md md:max-w-lg"
+   183→        )}
+   184→      >
+   185→        <SheetHeader className="border-b border-border px-4 py-3">
+   186→          <SheetTitle className="text-base">
+   187→            {state?.mode === "edit" ? "Edit event" : "New event"}
+   188→          </SheetTitle>
+   189→          <SheetDescription className="sr-only">
+   190→            {state?.mode === "edit"
+   191→              ? "Update or delete this calendar event."
+   192→              : "Create a new calendar event."}
+   193→          </SheetDescription>
+   194→        </SheetHeader>
+   195→        <EditForm
+   196→          key={formKey}
+   197→          state={state}
+   198→          onOpenChange={onOpenChange}
+   199→          rangeStart={rangeStart}
+   200→          rangeEnd={rangeEnd}
+   201→          events={events}
+   202→          defaultCalendarId={defaultCalendarId}
+   203→        />
+   204→      </SheetContent>
+   205→    </Sheet>
+   206→  );
+   207→}
+   208→
+   209→interface EditFormProps {
+   210→  state: EditSheetState | null;
+   211→  onOpenChange: (open: boolean) => void;
+   212→  rangeStart: string;
+   213→  rangeEnd: string;
+   214→  events: CalendarEvent[];
+   215→  defaultCalendarId?: string;
+   216→}
+   217→
+   218→function EditForm({
+   219→  state,
+   220→  onOpenChange,
+   221→  rangeStart,
+   222→  rangeEnd,
+   223→  events,
+   224→  defaultCalendarId,
+   225→}: EditFormProps) {
+   226→  const { data: calsData } = useCalendars();
+   227→  const calendars: Calendar[] = calsData?.calendars ?? [];
+   228→  const createMut = useCreateEvent();
+   229→  const updateMut = useUpdateEvent();
+   230→  const deleteMut = useDeleteEvent();
+   231→  const suggestMut = useSuggest();
+   232→
+   233→  const tz = useMemo(
+   234→    () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+   235→    []
+   236→  );
+   237→  const settingsAlerts = useSettings((s) => s.defaultAlerts);
+   238→  const addTemplate = useTemplates((s) => s.addTemplate);
+   239→
+   240→  // Initialise from `state` synchronously (lazy useState initializers).
+   241→  const initial = useMemo(() => {
+   242→    if (state?.mode === "edit" && state.event) {
+   243→      const e = state.event;
+   244→      return {
+   245→        title: e.title,
+   246→        allDay: e.allDay,
+   247→        start: e.start,
+   248→        end: e.end,
+   249→        calendarId: e.calendarId,
+   250→        color: e.color ?? null,
+   251→        location: e.location ?? "",
+   252→        travelMins: e.travelMins ?? 0,
+   253→        alerts: e.alerts?.length ? e.alerts : settingsAlerts,
+   254→        freq: e.recurrence ? e.recurrence.freq : "none",
+   255→        interval: e.recurrence ? e.recurrence.interval : 1,
+   256→        until: e.recurrence?.until ?? null,
+   257→        priority: e.priority ?? 0,
+   258→        timezone: e.timezone ?? tz,
+   259→        notes: e.notes ?? "",
+   260→        flexibility: e.flexibility,
+   261→        minChunkMins: e.minChunkMins,
+   262→        allowOverlap: e.allowOverlap,
+   263→        locationType: e.locationType,
+   264→      };
+   265→    }
+   266→    const d = state?.defaults;
+   267→    const inferred = d?.start ? inferMetaFromTitle("") : inferMetaFromTitle("");
+   268→    const startIso = d?.start ?? new Date().toISOString();
+   269→    const endIso = d?.end ?? addMinutes(new Date(), 60).toISOString();
+   270→    return {
+   271→      title: "",
+   272→      allDay: false,
+   273→      start: startIso,
+   274→      end: endIso,
+   275→      calendarId: d?.calendarId ?? defaultCalendarId ?? calendars[0]?.id ?? "",
+   276→      color: null,
+   277→      location: "",
+   278→      travelMins: 0,
+   279→      alerts: settingsAlerts,
+   280→      freq: "none",
+   281→      interval: 1,
+   282→      until: null,
+   283→      priority: 0,
+   284→      timezone: tz,
+   285→      notes: "",
+   286→      flexibility: inferred.flexibility,
+   287→      minChunkMins: inferred.minChunkMins,
+   288→      allowOverlap: inferred.allowOverlap,
+   289→      locationType: inferred.locationType,
+   290→    };
+   291→  }, [state, tz, defaultCalendarId, calendars]);
+   292→
+   293→  const [title, setTitle] = useState(initial.title);
+   294→  const [allDay, setAllDay] = useState(initial.allDay);
+   295→  const [start, setStart] = useState(initial.start);
+   296→  const [end, setEnd] = useState(initial.end);
+   297→  const [calendarId, setCalendarId] = useState(initial.calendarId);
+   298→  const [color, setColor] = useState<string | null>(initial.color);
+   299→  const [location, setLocation] = useState(initial.location);
+   300→  const [travelMins, setTravelMins] = useState(initial.travelMins);
+   301→  const [alerts, setAlerts] = useState<number[]>(initial.alerts);
+   302→  const [customAlert, setCustomAlert] = useState("");
+   303→  const [freq, setFreq] = useState(initial.freq);
+   304→  const [intervalN, setIntervalN] = useState(initial.interval);
+   305→  const [until, setUntil] = useState<string | null>(initial.until);
+   306→  const [priority, setPriority] = useState(initial.priority);
+   307→  const [timezone, setTimezone] = useState(initial.timezone);
+   308→  const [notes, setNotes] = useState(initial.notes);
+   309→  const [flexibility, setFlexibility] = useState<Flexibility>(initial.flexibility);
+   310→  const [minChunkMins, setMinChunkMins] = useState(initial.minChunkMins);
+   311→  const [allowOverlap, setAllowOverlap] = useState(initial.allowOverlap);
+   312→  const [locationType, setLocationType] = useState<LocationType>(initial.locationType);
+   313→  const [advancedOpen, setAdvancedOpen] = useState(false);
+   314→  const [locationDrawerOpen, setLocationDrawerOpen] = useState(false);
+   315→  const [editingTitle, setEditingTitle] = useState(false);
+   316→
+   317→  const inferred = useMemo(() => inferMetaFromTitle(title), [title]);
+   318→  const calendarsById = useMemo(
+   319→    () => Object.fromEntries(calendars.map((c) => [c.id, c])),
+   320→    [calendars]
+   321→  );
+   322→
+   323→  const startDate = start ? parseISO(start) : new Date();
+   324→  const endDate = end ? parseISO(end) : new Date();
+   325→  const durationMins = differenceInMinutes(endDate, startDate);
+   326→  const endBeforeStart = durationMins < 0;
+   327→
+   328→  const handleTitleChange = (v: string) => {
+   329→    setTitle(v);
+   330→    // In create mode, re-sync the inferred scheduling fields so the saved
+   331→    // event picks up the right flexibility/min-chunk for its title.
+   332→    if (state?.mode === "create" && v.trim()) {
+   333→      const inf = inferMetaFromTitle(v);
+   334→      setFlexibility(inf.flexibility);
+   335→      setMinChunkMins(inf.minChunkMins);
+   336→      setAllowOverlap(inf.allowOverlap);
+   337→      setLocationType(inf.locationType);
+   338→      if (!calendarId && inf.calendarKind) {
+   339→        const match = calendars.find((c) => c.kind === inf.calendarKind);
+   340→        if (match) setCalendarId(match.id);
+   341→      }
+   342→    }
+   343→  };
+   344→
+   345→  const handleSave = async () => {
+   346→    if (!title.trim()) {
+   347→      toast.error("Give your event a title.");
+   348→      return;
+   349→    }
+   350→    if (endBeforeStart && !allDay) {
+   351→      toast.error("End time must be after start.");
+   352→      return;
+   353→    }
+   354→    if (!calendarId) {
+   355→      toast.error("Pick a calendar.");
+   356→      return;
+   357→    }
+   358→    const recurrence: RecurrenceRule | null =
+   359→      freq !== "none"
+   360→        ? {
+   361→            freq: freq as RecurrenceRule["freq"],
+   362→            interval: Math.max(1, intervalN || 1),
+   363→            until: until ?? undefined,
+   364→          }
+   365→        : null;
+   366→    const payload: Partial<CalendarEvent> & {
+   367→      title: string;
+   368→      start: string;
+   369→      end: string;
+   370→      calendarId: string;
+   371→    } = {
+   372→      title: title.trim(),
+   373→      start,
+   374→      end: allDay ? start : end,
+   375→      allDay,
+   376→      calendarId,
+   377→      location: location || null,
+   378→      travelMins,
+   379→      alerts,
+   380→      recurrence,
+   381→      priority,
+   382→      timezone,
+   383→      notes: notes || null,
+   384→      flexibility,
+   385→      minChunkMins,
+   386→      allowOverlap,
+   387→      locationType,
+   388→      color: color ?? null,
+   389→      category: inferred.category,
+   390→    };
+   391→    try {
+   392→      if (state?.mode === "edit" && state.event) {
+   393→        await updateMut.mutateAsync({ id: state.event.id, patch: payload });
+   394→        toast.success("Event updated");
+   395→      } else {
+   396→        await createMut.mutateAsync(payload);
+   397→        toast.success("Event added");
+   398→      }
+   399→      onOpenChange(false);
+   400→    } catch (e) {
+   401→      toast.error("Couldn't save", { description: String(e) });
+   402→    }
+   403→  };
+   404→
+   405→  const handleDelete = async () => {
+   406→    if (!state?.event) return;
+   407→    try {
+   408→      await deleteMut.mutateAsync(state.event.id);
+   409→      toast.success("Deleted");
+   410→      onOpenChange(false);
+   411→    } catch (e) {
+   412→      toast.error("Couldn't delete", { description: String(e) });
+   413→    }
+   414→  };
+   415→
+   416→  // Duplicate the current event one day later (same time). Keeps all the
+   417→  // intelligence metadata so the copy behaves the same way.
+   418→  const handleDuplicate = async () => {
+   419→    if (!state?.event) return;
+   420→    const ev = state.event;
+   421→    const startMs = parseISO(ev.start).getTime();
+   422→    const endMs = parseISO(ev.end).getTime();
+   423→    const dur = endMs - startMs;
+   424→    const newStart = new Date(startMs + 24 * 60 * 60 * 1000);
+   425→    const newEnd = new Date(newStart.getTime() + dur);
+   426→    try {
+   427→      const res = await createMut.mutateAsync({
+   428→        title: ev.title,
+   429→        start: newStart.toISOString(),
+   430→        end: newEnd.toISOString(),
+   431→        allDay: ev.allDay,
+   432→        location: ev.location ?? undefined,
+   433→        notes: ev.notes ?? undefined,
+   434→        timezone: ev.timezone ?? undefined,
+   435→        calendarId: ev.calendarId,
+   436→        category: ev.category,
+   437→        flexibility: ev.flexibility,
+   438→        locationType: ev.locationType,
+   439→        minChunkMins: ev.minChunkMins,
+   440→        allowOverlap: ev.allowOverlap,
+   441→        priority: ev.priority,
+   442→        travelMins: ev.travelMins,
+   443→        color: ev.color ?? undefined,
+   444→        alerts: ev.alerts,
+   445→        recurrence: ev.recurrence ?? undefined,
+   446→      });
+   447→      toast.success("Duplicated to " + format(newStart, "EEE d MMM, HH:mm"));
+   448→      onOpenChange(false);
+   449→      void res;
+   450→    } catch (e) {
+   451→      toast.error("Couldn't duplicate", { description: String(e) });
+   452→    }
+   453→  };
+   454→
+   455→  // Save the current event's title/duration/calendar/location as a reusable
+   456→  // quick-add template.
+   457→  const handleSaveAsTemplate = () => {
+   458→    if (!title.trim()) {
+   459→      toast.error("Type a title first.");
+   460→      return;
+   461→    }
+   462→    const dur = Math.max(
+   463→      15,
+   464→      Math.round(
+   465→        (parseISO(end).getTime() - parseISO(start).getTime()) / 60000
+   466→      )
+   467→    );
+   468→    addTemplate({
+   469→      title: title.trim(),
+   470→      durationMins: dur,
+   471→      calendarId,
+   472→      location: location || undefined,
+   473→      color,
+   474→      category: inferred.category,
+   475→      flexibility: inferred.flexibility,
+   476→      locationType: inferred.locationType,
+   477→    });
+   478→    toast.success(`Saved "${title.trim()}" as a template.`);
+   479→  };
+   480→
+   481→  // Apply a template's fields to the current form.
+   482→  const applyTemplate = (t: {
+   483→    title: string;
+   484→    durationMins: number;
+   485→    calendarId?: string;
+   486→    location?: string;
+   487→    color?: string | null;
+   488→    category?: string;
+   489→    flexibility?: string;
+   490→    locationType?: string;
+   491→  }) => {
+   492→    setTitle(t.title);
+   493→    if (t.location !== undefined) setLocation(t.location);
+   494→    if (t.calendarId) setCalendarId(t.calendarId);
+   495→    if (t.color !== undefined) setColor(t.color);
+   496→    // Re-derive start/end: keep the current start, adjust end to the template duration.
+   497→    const startMs = parseISO(start).getTime();
+   498→    const newEnd = new Date(startMs + t.durationMins * 60000).toISOString();
+   499→    setEnd(newEnd);
+   500→    toast.success(`Applied "${t.title}" template.`);
+   501→  };
+   502→
+   503→  const handleFindBestSlot = async () => {
+   504→    if (!title.trim()) {
+   505→      toast.error("Type a title first so I know what to schedule.");
+   506→      return;
+   507→    }
+   508→    const dur = Math.max(15, Math.round(durationMins));
+   509→    try {
+   510→      const res = await suggestMut.mutateAsync({
+   511→        task: { category: inferred.category, locationType, minChunkMins, flexibility },
+   512→        durationMins: dur,
+   513→        rangeStart,
+   514→        rangeEnd,
+   515→        aroundEvents: events,
+   516→      });
+   517→      if (!res.plan || res.plan.placements.length === 0) {
+   518→        toast.error("No free slot found for this task.");
+   519→        return;
+   520→      }
+   521→      const p = res.plan.placements[0];
+   522→      setStart(p.start);
+   523→      setEnd(p.end);
+   524→      toast.success(`Placed: ${res.plan.reason}`);
+   525→    } catch (e) {
+   526→      toast.error("Couldn't find a slot", { description: String(e) });
+   527→    }
+   528→  };
+   529→
+   530→  const toggleAlert = (v: number) => {
+   531→    setAlerts((cur) =>
+   532→      cur.includes(v)
+   533→        ? cur.filter((a) => a !== v)
+   534→        : [...cur, v].sort((a, b) => a - b)
+   535→    );
+   536→  };
+   537→  const addCustomAlert = () => {
+   538→    const n = Number(customAlert);
+   539→    if (!Number.isFinite(n) || n <= 0) {
+   540→      toast.error("Enter a valid number of minutes.");
+   541→      return;
+   542→    }
+   543→    // Store as negative (minutes-before start) to match the notifications engine.
+   544→    toggleAlert(-n);
+   545→    setCustomAlert("");
+   546→  };
+   547→
+   548→  return (
+   549→    <>
+   550→      <div className="cal-scroll flex-1 overflow-y-auto px-4 py-4">
+   551→        {/* Title — click-to-edit: shows as text until tapped */}
+   552→        <div className="mb-3">
+   553→          {editingTitle ? (
+   554→            <Input
+   555→              value={title}
+   556→              onChange={(e) => handleTitleChange(e.target.value)}
+   557→              onBlur={() => setEditingTitle(false)}
+   558→              placeholder="Title"
+   559→              autoFocus
+   560→              className="h-12 border-0 px-0 text-lg font-semibold shadow-none focus-visible:ring-0"
+   561→            />
+   562→          ) : (
+   563→            <button
+   564→              onClick={() => setEditingTitle(true)}
+   565→              className={cn(
+   566→                "flex h-12 w-full items-center px-0 text-left text-lg font-semibold",
+   567→                !title.trim() && "text-muted-foreground"
+   568→              )}
+   569→            >
+   570→              {title.trim() || "Tap to add title…"}
+   571→            </button>
+   572→          )}
+   573→          {/* Type-ahead: search previous events, select to copy all data */}
+   574→          {state?.mode === "create" && title.trim().length >= 2 && (
+   575→            <TitleAutocomplete
+   576→              value={title}
+   577→              onChange={() => {}}
+   578→              onSelect={(ev) => {
+   579→                setTitle(ev.title);
+   580→                setAllDay(ev.allDay);
+   581→                setCalendarId(ev.calendarId);
+   582→                setColor(ev.color ?? null);
+   583→                setLocation(ev.location ?? "");
+   584→                setTravelMins(ev.travelMins ?? 0);
+   585→                setAlerts(ev.alerts ?? []);
+   586→                setFreq(ev.recurrence?.freq ?? "none");
+   587→                setIntervalN(ev.recurrence?.interval ?? 1);
+   588→                setUntil(ev.recurrence?.until ?? null);
+   589→                setPriority(ev.priority ?? 0);
+   590→                setNotes(ev.notes ?? "");
+   591→                setFlexibility(ev.flexibility);
+   592→                setMinChunkMins(ev.minChunkMins);
+   593→                setAllowOverlap(ev.allowOverlap);
+   594→                setLocationType(ev.locationType);
+   595→                toast.success(`Copied details from "${ev.title}".`);
+   596→              }}
+   597→              calendarsById={calendarsById}
+   598→            />
+   599→          )}
+   600→          <div className="mt-1 flex flex-wrap items-center gap-2">
+   601→            <Badge
+   602→              variant="secondary"
+   603→              className="gap-1 text-[11px] font-medium"
+   604→              style={{
+   605→                backgroundColor: inferred.color + "20",
+   606→                color: inferred.color,
+   607→              }}
+   608→            >
+   609→              {categoryLabel(inferred.category)} · {inferred.flexibility}
+   610→            </Badge>
+   611→            <span className="text-[11px] text-muted-foreground">
+   612→              {describeFlexibility(inferred.flexibility)}
+   613→            </span>
+   614→          </div>
+   615→        </div>
+   616→
+   617→        {/* All-day */}
+   618→        <Row label="All-day">
+   619→          <Switch checked={allDay} onCheckedChange={setAllDay} />
+   620→        </Row>
+   621→        <Separator className="my-2" />
+   622→
+   623→        {/* Starts / Ends */}
+   624→        {!allDay && (
+   625→          <>
+   626→            <Row label="Starts">
+   627→              <div className="flex items-center gap-1">
+   628→                <Popover>
+   629→                  <PopoverTrigger asChild>
+   630→                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs">
+   631→                      {format(startDate, "EEE d MMM")}
+   632→                    </Button>
+   633→                  </PopoverTrigger>
+   634→                  <PopoverContent className="w-auto p-0" align="end">
+   635→                    <DatePicker
+   636→                      mode="single"
+   637→                      selected={startDate}
+   638→                      onSelect={(d) => d && setStart(mergeDate(d, startDate).toISOString())}
+   639→                    />
+   640→                  </PopoverContent>
+   641→                </Popover>
+   642→                <TimeWheel
+   643→                  hour={startDate.getHours()}
+   644→                  minute={startDate.getMinutes()}
+   645→                  onChange={(h, m) => setStart(mergeHM(startDate, h, m).toISOString())}
+   646→                />
+   647→              </div>
+   648→            </Row>
+   649→
+   650→            <Row label="Ends">
+   651→              <div className="flex items-center gap-1">
+   652→                <Popover>
+   653→                  <PopoverTrigger asChild>
+   654→                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs">
+   655→                      {format(endDate, "EEE d MMM")}
+   656→                    </Button>
+   657→                  </PopoverTrigger>
+   658→                  <PopoverContent className="w-auto p-0" align="end">
+   659→                    <DatePicker
+   660→                      mode="single"
+   661→                      selected={endDate}
+   662→                      onSelect={(d) => d && setEnd(mergeDate(d, endDate).toISOString())}
+   663→                    />
+   664→                  </PopoverContent>
+   665→                </Popover>
+   666→                <TimeWheel
+   667→                  hour={endDate.getHours()}
+   668→                  minute={endDate.getMinutes()}
+   669→                  onChange={(h, m) => setEnd(mergeHM(endDate, h, m).toISOString())}
+   670→                />
+   671→              </div>
+   672→            </Row>
+   673→
+   674→            <div className="mb-1 mt-1 flex items-center justify-between px-1 text-[11px]">
+   675→              <span
+   676→                className={cn(
+   677→                  endBeforeStart ? "text-destructive" : "text-muted-foreground"
+   678→                )}
+   679→              >
+   680→                {endBeforeStart
+   681→                  ? "End is before start"
+   682→                  : `Duration: ${fmtDuration(start, end)}`}
+   683→              </span>
+   684→            </div>
+   685→          </>
+   686→        )}
+   687→
+   688→        {allDay && (
+   689→          <Row label="Date">
+   690→            <Popover>
+   691→              <PopoverTrigger asChild>
+   692→                <Button variant="ghost" size="sm" className="h-7 text-xs">
+   693→                  {format(startDate, "EEE d MMM yyyy")}
+   694→                </Button>
+   695→              </PopoverTrigger>
+   696→              <PopoverContent className="w-auto p-0" align="end">
+   697→                <DatePicker
+   698→                  mode="single"
+   699→                  selected={startDate}
+   700→                  onSelect={(d) => {
+   701→                    if (!d) return;
+   702→                    setStart(mergeDate(d, startDate).toISOString());
+   703→                    setEnd(mergeDate(d, startDate).toISOString());
+   704→                  }}
+   705→                />
+   706→              </PopoverContent>
+   707→            </Popover>
+   708→          </Row>
+   709→        )}
+   710→
+   711→        <Separator className="my-2" />
+   712→
+   713→        {/* Calendar */}
+   714→        <Row label="Calendar">
+   715→          <Select value={calendarId} onValueChange={setCalendarId}>
+   716→            <SelectTrigger size="sm" className="h-7 w-[160px] text-xs">
+   717→              <SelectValue placeholder="Choose…" />
+   718→            </SelectTrigger>
+   719→            <SelectContent>
+   720→              {calendars.map((c) => (
+   721→                <SelectItem key={c.id} value={c.id}>
+   722→                  <span className="flex items-center gap-2">
+   723→                    <span
+   724→                      className="inline-block size-2.5 rounded-full"
+   725→                      style={{ backgroundColor: c.color }}
+   726→                    />
+   727→                    {c.name}
+   728→                  </span>
+   729→                </SelectItem>
+   730→              ))}
+   731→            </SelectContent>
+   732→          </Select>
+   733→        </Row>
+   734→
+   735→        {/* Color override */}
+   736→        <div className="mb-2 mt-1 px-1">
+   737→          <Label className="text-[11px] font-medium text-muted-foreground">
+   738→            Color override
+   739→          </Label>
+   740→          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+   741→            {calendarsById[calendarId] && (
+   742→              <button
+   743→                onClick={() => setColor(null)}
+   744→                className={cn(
+   745→                  "size-5 rounded-full ring-2 ring-offset-1 ring-offset-background transition-transform hover:scale-110",
+   746→                  color === null ? "ring-foreground" : "ring-transparent"
+   747→                )}
+   748→                style={{ backgroundColor: calendarsById[calendarId].color }}
+   749→                aria-label="Use calendar color"
+   750→                title="Use calendar color"
+   751→              />
+   752→            )}
+   753→            {COLOR_SWATCHES.map((c) => (
+   754→              <button
+   755→                key={c}
+   756→                onClick={() => setColor(c)}
+   757→                className={cn(
+   758→                  "size-5 rounded-full ring-2 ring-offset-1 ring-offset-background transition-transform hover:scale-110",
+   759→                  color === c ? "ring-foreground" : "ring-transparent"
+   760→                )}
+   761→                style={{ backgroundColor: c }}
+   762→                aria-label={`Use color ${c}`}
+   763→              />
+   764→            ))}
+   765→          </div>
+   766→        </div>
+   767→
+   768→        <Separator className="my-2" />
+   769→
+   770→        {/* Location — full-width on mobile (opens a bottom-sheet drawer), inline autocomplete on desktop */}
+   771→        <div className="sm:hidden">
+   772→          <label className="mb-1 flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+   773→            <MapPin className="size-3" />
+   774→            Location
+   775→          </label>
+   776→          <button
+   777→            onClick={() => setLocationDrawerOpen(true)}
+   778→            className="flex w-full items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-left text-sm"
+   779→          >
+   780→            <MapPin className="size-3.5 shrink-0 text-muted-foreground" />
+   781→            <span className={cn("flex-1 truncate", !location && "text-muted-foreground")}>
+   782→              {location || "Search a place or type…"}
+   783→            </span>
+   784→          </button>
+   785→          <LocationDrawer
+   786→            open={locationDrawerOpen}
+   787→            onOpenChange={setLocationDrawerOpen}
+   788→            value={location}
+   789→            onChange={setLocation}
+   790→          />
+   791→        </div>
+   792→        <div className="hidden sm:contents">
+   793→          <Row
+   794→            label="Location"
+   795→            icon={<MapPin className="size-3.5 text-muted-foreground" />}
+   796→          >
+   797→            <div className="w-[60%]">
+   798→              <LocationAutocomplete
+   799→                value={location}
+   800→                onChange={setLocation}
+   801→                placeholder="Search a place…"
+   802→              />
+   803→            </div>
+   804→          </Row>
+   805→        </div>
+   806→
+   807→        <Row label="Travel time (min)">
+   808→          <Input
+   809→            type="number"
+   810→            min={0}
+   811→            value={travelMins}
+   812→            onChange={(e) => setTravelMins(Math.max(0, Number(e.target.value) || 0))}
+   813→            className="h-7 w-20 text-xs"
+   814→          />
+   815→        </Row>
+   816→
+   817→        <Separator className="my-2" />
+   818→
+   819→        {/* Alerts */}
+   820→        <div className="mb-2 px-1">
+   821→          <Label className="text-[11px] font-medium text-muted-foreground">
+   822→            Alerts
+   823→          </Label>
+   824→          <div className="mt-1 flex flex-wrap gap-1.5">
+   825→            {ALERT_PRESETS.map((a) => {
+   826→              const on = alerts.includes(a.value);
+   827→              return (
+   828→                <button
+   829→                  key={a.value}
+   830→                  onClick={() => toggleAlert(a.value)}
+   831→                  className={cn(
+   832→                    "rounded-full border px-2.5 py-1 text-[11px] transition-colors",
+   833→                    on
+   834→                      ? "border-primary bg-primary text-primary-foreground"
+   835→                      : "border-border text-muted-foreground hover:bg-accent"
+   836→                  )}
+   837→                >
+   838→                  {a.label}
+   839→                </button>
+   840→              );
+   841→            })}
+   842→          </div>
+   843→          <div className="mt-2 flex items-center gap-1">
+   844→            <Input
+   845→              type="number"
+   846→              min={0}
+   847→              value={customAlert}
+   848→              onChange={(e) => setCustomAlert(e.target.value)}
+   849→              placeholder="Custom (min before)"
+   850→              className="h-7 w-40 text-xs"
+   851→            />
+   852→            <Button
+   853→              size="sm"
+   854→              variant="outline"
+   855→              onClick={addCustomAlert}
+   856→              className="h-7 text-xs"
+   857→            >
+   858→              Add
+   859→            </Button>
+   860→          </div>
+   861→        </div>
+   862→
+   863→        <Separator className="my-2" />
+   864→
+   865→        {/* Overlap control — promoted out of advanced for visibility */}
+   866→        <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 p-2.5">
+   867→          <div className="flex items-start gap-2">
+   868→            <Layers className="mt-0.5 size-3.5 text-muted-foreground" />
+   869→            <div>
+   870→              <div className="text-xs font-medium">Allow overlap with other events</div>
+   871→              <div className="text-[10px] text-muted-foreground">
+   872→                {allowOverlap
+   873→                  ? "This task can overlap same-location events (e.g. laundry while working)."
+   874→                  : "This task blocks others — conflicts will be highlighted."}
+   875→              </div>
+   876→            </div>
+   877→          </div>
+   878→          <Switch checked={allowOverlap} onCheckedChange={setAllowOverlap} />
+   879→        </div>
+   880→
+   881→        {/* Repeat */}
+   882→        <Row label="Repeat">
+   883→          <Select value={freq} onValueChange={setFreq}>
+   884→            <SelectTrigger size="sm" className="h-7 w-[120px] text-xs">
+   885→              <SelectValue />
+   886→            </SelectTrigger>
+   887→            <SelectContent>
+   888→              {RECURRENCE_FREQS.map((f) => (
+   889→                <SelectItem key={f.value} value={f.value} className="text-xs">
+   890→                  {f.label}
+   891→                </SelectItem>
+   892→              ))}
+   893→            </SelectContent>
+   894→          </Select>
+   895→        </Row>
+   896→        {freq !== "none" && (
+   897→          <>
+   898→            <Row label="Every">
+   899→              <div className="flex items-center gap-1">
+   900→                <Input
+   901→                  type="number"
+   902→                  min={1}
+   903→                  value={intervalN}
+   904→                  onChange={(e) => setIntervalN(Math.max(1, Number(e.target.value) || 1))}
+   905→                  className="h-7 w-14 text-xs"
+   906→                />
+   907→                <span className="text-xs text-muted-foreground">
+   908→                  {freq === "daily"
+   909→                    ? "days"
+   910→                    : freq === "weekly"
+   911→                    ? "weeks"
+   912→                    : freq === "monthly"
+   913→                    ? "months"
+   914→                    : "years"}
+   915→                </span>
+   916→              </div>
+   917→            </Row>
+   918→            <Row label="Ends">
+   919→              <Popover>
+   920→                <PopoverTrigger asChild>
+   921→                  <Button variant="ghost" size="sm" className="h-7 text-xs">
+   922→                    {until ? format(parseISO(until), "d MMM yyyy") : "Never"}
+   923→                  </Button>
+   924→                </PopoverTrigger>
+   925→                <PopoverContent className="w-auto p-0" align="end">
+   926→                  <DatePicker
+   927→                    mode="single"
+   928→                    selected={until ? parseISO(until) : undefined}
+   929→                    onSelect={(d) => setUntil(d ? d.toISOString() : null)}
+   930→                  />
+   931→                </PopoverContent>
+   932→              </Popover>
+   933→            </Row>
+   934→          </>
+   935→        )}
+   936→
+   937→        {/* Priority */}
+   938→        <Row label="Priority">
+   939→          <Select
+   940→            value={String(priority)}
+   941→            onValueChange={(v) => setPriority(Number(v))}
+   942→          >
+   943→            <SelectTrigger size="sm" className="h-7 w-[110px] text-xs">
+   944→              <SelectValue />
+   945→            </SelectTrigger>
+   946→            <SelectContent>
+   947→              {PRIORITIES.map((p) => (
+   948→                <SelectItem key={p.value} value={p.value} className="text-xs">
+   949→                  {p.label}
+   950→                </SelectItem>
+   951→              ))}
+   952→            </SelectContent>
+   953→          </Select>
+   954→        </Row>
+   955→
+   956→        <Row label="Time zone">
+   957→          <Input
+   958→            value={timezone}
+   959→            onChange={(e) => setTimezone(e.target.value)}
+   960→            className="h-7 w-[60%] text-xs"
+   961→          />
+   962→        </Row>
+   963→
+   964→        {/* Notes */}
+   965→        <div className="mb-2 mt-2 px-1">
+   966→          <Label className="text-[11px] font-medium text-muted-foreground">
+   967→            Notes
+   968→          </Label>
+   969→          <Textarea
+   970→            value={notes}
+   971→            onChange={(e) => setNotes(e.target.value)}
+   972→            placeholder="Anything else?"
+   973→            className="mt-1 min-h-[64px] text-xs"
+   974→          />
+   975→        </div>
+   976→
+   977→        {/* Advanced */}
+   978→        <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+   979→          <CollapsibleTrigger asChild>
+   980→            <Button
+   981→              variant="ghost"
+   982→              size="sm"
+   983→              className="mt-1 w-full justify-between px-1 text-xs"
+   984→            >
+   985→              <span className="flex items-center gap-1.5">
+   986→                <Wand2 className="size-3.5" />
+   987→                Scheduling behaviour
+   988→              </span>
+   989→              <span className="text-[10px] text-muted-foreground">
+   990→                {advancedOpen ? "Hide" : "Show"}
+   991→              </span>
+   992→            </Button>
+   993→          </CollapsibleTrigger>
+   994→          <CollapsibleContent className="mt-2 space-y-2 px-1">
+   995→            <Row
+   996→              label="Flexibility"
+   997→              icon={<Lock className="size-3.5 text-muted-foreground" />}
+   998→            >
+   999→              <Select
+  1000→                value={flexibility}
+  1001→                onValueChange={(v) => setFlexibility(v as Flexibility)}
+  1002→              >
+  1003→                <SelectTrigger size="sm" className="h-7 w-[150px] text-xs">
+  1004→                  <SelectValue />
+  1005→                </SelectTrigger>
+  1006→                <SelectContent>
+  1007→                  {FLEX_OPTIONS.map((f) => (
+  1008→                    <SelectItem key={f.value} value={f.value} className="text-xs">
+  1009→                      {f.label}
+  1010→                    </SelectItem>
+  1011→                  ))}
+  1012→                </SelectContent>
+  1013→              </Select>
+  1014→            </Row>
+  1015→            <p className="px-1 text-[11px] text-muted-foreground">
+  1016→              {describeFlexibility(flexibility)}
+  1017→            </p>
+  1018→            {flexibility === "flexible" && (
+  1019→              <Row label="Min chunk (min)">
+  1020→                <Input
+  1021→                  type="number"
+  1022→                  min={15}
+  1023→                  step={5}
+  1024→                  value={minChunkMins}
+  1025→                  onChange={(e) =>
+  1026→                    setMinChunkMins(Math.max(15, Number(e.target.value) || 15))
+  1027→                  }
+  1028→                  className="h-7 w-20 text-xs"
+  1029→                />
+  1030→              </Row>
+  1031→            )}
+  1032→            <Row
+  1033→              label="Allow overlap"
+  1034→              icon={<GripVertical className="size-3.5 text-muted-foreground" />}
+  1035→            >
+  1036→              <Switch
+  1037→                checked={allowOverlap}
+  1038→                onCheckedChange={setAllowOverlap}
+  1039→              />
+  1040→            </Row>
+  1041→            <Row label="Location type">
+  1042→              <Select
+  1043→                value={locationType}
+  1044→                onValueChange={(v) => setLocationType(v as LocationType)}
+  1045→              >
+  1046→                <SelectTrigger size="sm" className="h-7 w-[140px] text-xs">
+  1047→                  <SelectValue />
+  1048→                </SelectTrigger>
+  1049→                <SelectContent>
+  1050→                  {LOC_TYPES.map((l) => (
+  1051→                    <SelectItem key={l.value} value={l.value} className="text-xs">
+  1052→                      {l.label}
+  1053→                    </SelectItem>
+  1054→                  ))}
+  1055→                </SelectContent>
+  1056→              </Select>
+  1057→            </Row>
+  1058→          </CollapsibleContent>
+  1059→        </Collapsible>
+  1060→
+  1061→        {/* Find best slot */}
+  1062→        {!allDay && (
+  1063→          <Button
+  1064→            variant="outline"
+  1065→            size="sm"
+  1066→            className="mt-3 w-full gap-1.5"
+  1067→            onClick={handleFindBestSlot}
+  1068→            disabled={suggestMut.isPending}
+  1069→          >
+  1070→            <Sparkles className="size-3.5" />
+  1071→            {suggestMut.isPending ? "Finding…" : "Find best slot"}
+  1072→          </Button>
+  1073→        )}
+  1074→
+  1075→        {/* Quick-add templates (create mode only) */}
+  1076→        {state?.mode === "create" && (
+  1077→          <div className="mt-3">
+  1078→            <div className="mb-1.5 flex items-center justify-between">
+  1079→              <span className="text-[11px] font-medium text-muted-foreground">
+  1080→                Quick add
+  1081→              </span>
+  1082→              <button
+  1083→                onClick={handleSaveAsTemplate}
+  1084→                className="text-[11px] font-medium text-emerald-600 hover:underline dark:text-emerald-400"
+  1085→                disabled={!title.trim()}
+  1086→              >
+  1087→                + Save current as template
+  1088→              </button>
+  1089→            </div>
+  1090→            <TemplatesBar onApply={applyTemplate} />
+  1091→          </div>
+  1092→        )}
+  1093→      </div>
+  1094→
+  1095→      <SheetFooter className="flex-row items-center justify-between gap-2 border-t border-border px-4 py-3">
+  1096→        {state?.mode === "edit" && state.event ? (
+  1097→          <div className="flex items-center gap-1">
+  1098→            <Button
+  1099→              variant="ghost"
+  1100→              size="sm"
+  1101→              className="gap-1.5"
+  1102→              onClick={handleDuplicate}
+  1103→              disabled={createMut.isPending}
+  1104→            >
+  1105→              <Copy className="size-3.5" />
+  1106→              Duplicate
+  1107→            </Button>
+  1108→            <AlertDialog>
+  1109→              <AlertDialogTrigger asChild>
+  1110→                <Button
+  1111→                  variant="ghost"
+  1112→                  size="sm"
+  1113→                  className="gap-1.5 text-destructive hover:text-destructive"
+  1114→                >
+  1115→                  <Trash2 className="size-3.5" />
+  1116→                  Delete
+  1117→                </Button>
+  1118→              </AlertDialogTrigger>
+  1119→            <AlertDialogContent>
+  1120→              <AlertDialogHeader>
+  1121→                <AlertDialogTitle>Delete event?</AlertDialogTitle>
+  1122→                <AlertDialogDescription>
+  1123→                  This permanently removes &ldquo;{state.event.title}&rdquo; from
+  1124→                  your calendar.
+  1125→                </AlertDialogDescription>
+  1126→              </AlertDialogHeader>
+  1127→              <AlertDialogFooter>
+  1128→                <AlertDialogCancel>Cancel</AlertDialogCancel>
+  1129→                <AlertDialogAction
+  1130→                  onClick={handleDelete}
+  1131→                  className="bg-destructive text-white hover:bg-destructive/90"
+  1132→                >
+  1133→                  Delete
+  1134→                </AlertDialogAction>
+  1135→              </AlertDialogFooter>
+  1136→            </AlertDialogContent>
+  1137→          </AlertDialog>
+  1138→          </div>
+  1139→        ) : (
+  1140→          <Button
+  1141→            variant="ghost"
+  1142→            size="sm"
+  1143→            onClick={() => onOpenChange(false)}
+  1144→          >
+  1145→            Cancel
+  1146→          </Button>
+  1147→        )}
+  1148→        <Button
+  1149→          onClick={handleSave}
+  1150→          disabled={createMut.isPending || updateMut.isPending}
+  1151→          className="bg-emerald-600 text-white hover:bg-emerald-700"
+  1152→        >
+  1153→          {state?.mode === "edit" ? "Done" : "Add event"}
+  1154→        </Button>
+  1155→      </SheetFooter>
+  1156→    </>
+  1157→  );
+  1158→}
+  1159→
+  1160→// ---- Row helper ----------------------------------------------------------
+  1161→function Row({
+  1162→  label,
+  1163→  icon,
+  1164→  children,
+  1165→}: {
+  1166→  label: string;
+  1167→  icon?: React.ReactNode;
+  1168→  children: React.ReactNode;
+  1169→}) {
+  1170→  return (
+  1171→    <div className="flex items-center justify-between gap-2 py-1.5">
+  1172→      <div className="flex items-center gap-1.5 text-xs font-medium">
+  1173→        {icon}
+  1174→        <span>{label}</span>
+  1175→      </div>
+  1176→      <div className="flex items-center gap-1">{children}</div>
+  1177→    </div>
+  1178→  );
+  1179→}
+  1180→
+  1181→function mergeDate(date: Date, time: Date): Date {
+  1182→  const d = new Date(time);
+  1183→  d.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+  1184→  return d;
+  1185→}
+  1186→
+  1187→function mergeTime(date: Date, hhmm: string): Date {
+  1188→  const [h, m] = hhmm.split(":").map(Number);
+  1189→  const d = new Date(date);
+  1190→  d.setHours(h, m, 0, 0);
+  1191→  return d;
+  1192→}
+  1193→
