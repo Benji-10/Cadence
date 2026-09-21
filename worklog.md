@@ -1004,3 +1004,26 @@ Full audit of every fix from the worklog (Tasks 1-40):
 TECHNICAL:
 - `bun run lint` clean. No runtime errors. All 5 views cycle cleanly.
 - The snapMins shadowing bug keeps recurring because `sed` replacements on other files inadvertently restore the old import name. Fixed by using `snapMinsFn` alias consistently.
+
+---
+Task ID: 42 (fix title autocomplete + drag-create + identity)
+Agent: main
+Task: Fix title autocomplete dropdown not showing, drag-create opening edit sheet, identity not responding.
+
+## Current project status / assessment
+- App stable. Fixed three issues.
+
+## Completed modifications / verification results
+1. **Title autocomplete dropdown not showing** — the outside-click `mousedown` handler was closing the dropdown before the click could register on a result. Removed the outside-click handler entirely (the dropdown closes via `pick()` on select, or via the title-length check). Also removed the `Promise.resolve().then()` wrapper that was causing a race condition with the lint rule. Changed to a `setTimeout(..., 0)` pattern. Added `type="button"` and `onMouseDown={(e) => e.preventDefault()}` on result buttons to prevent focus-stealing from the title input.
+
+2. **Drag-to-create opening edit sheet immediately** — the DayColumn had its OWN 600ms `createTimerRef` that called `handleCreateLongPress` → `onCreate()` directly, which opened the edit sheet at 600ms — BEFORE the `useCreateDrag` hook's 1s timer could show the drag preview. Removed the entire custom timer block (`handleCreateLongPress`, `createTimerRef`, `createOriginRef`, and the pointer move/up cancel logic). Now `useCreateDrag` is the only handler — its 1s timer shows the preview, and the user can drag to set duration.
+
+3. **Netlify Identity button not responding** — rewrote the component:
+   - Properly handles the `init`/`login`/`logout` events
+   - Opens the login modal via `window.netlifyIdentity.open("login")` instead of just `.open()`
+   - Redirects to `/` after login to refresh the server context
+   - Added `off` type to the interface declaration
+   - Cleaner polling logic with cancellation
+
+TECHNICAL:
+- `bun run lint` clean. No runtime errors. All 5 views cycle. Plus button found.

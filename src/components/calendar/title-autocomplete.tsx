@@ -16,7 +16,7 @@ interface TitleAutocompleteProps {
 
 export function TitleAutocomplete({
   value,
-  onChange,
+  onChange: _onChange,
   onSelect,
   calendarsById,
 }: TitleAutocompleteProps) {
@@ -28,12 +28,12 @@ export function TitleAutocomplete({
 
   useEffect(() => {
     const q = debounced.trim();
-    if (q.length < 2) {
-      Promise.resolve().then(() => {
+    if (q.length < 3) {
+      const id = setTimeout(() => {
         setFetched([]);
         setOpen(false);
-      });
-      return;
+      }, 0);
+      return () => clearTimeout(id);
     }
     let cancelled = false;
     api
@@ -48,24 +48,16 @@ export function TitleAutocomplete({
           return true;
         });
         setFetched(unique);
-        setOpen(unique.length > 0);
-        setActive(0);
+        if (unique.length > 0) {
+          setOpen(true);
+          setActive(0);
+        }
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, [debounced]);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
 
   const pick = (ev: CalendarEvent) => {
     onSelect(ev);
@@ -88,8 +80,13 @@ export function TitleAutocomplete({
           return (
             <li key={ev.id}>
               <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
                 onMouseEnter={() => setActive(i)}
-                onClick={() => pick(ev)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  pick(ev);
+                }}
                 className={cn(
                   "flex w-full items-start gap-2 px-2.5 py-1.5 text-left text-xs transition-colors",
                   i === active ? "bg-accent" : "hover:bg-accent/50"
@@ -117,3 +114,4 @@ export function TitleAutocomplete({
     </div>
   );
 }
+

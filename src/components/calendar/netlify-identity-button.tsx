@@ -19,8 +19,9 @@ interface NetlifyUser {
 declare global {
   interface Window {
     netlifyIdentity?: {
-      on: (event: string, cb: (user?: NetlifyUser) => void) => void;
-      open: () => void;
+      on: (event: string, cb: (user?: NetlifyUser | null) => void) => void;
+      off: (event: string, cb: (user?: NetlifyUser | null) => void) => void;
+      open: (tab?: string) => void;
       close: () => void;
       currentUser: () => NetlifyUser | null;
       logout: () => void;
@@ -33,20 +34,42 @@ export function NetlifyIdentityButton() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    // Wait for the Netlify Identity widget to load.
-    const checkIdentity = () => {
+    let cancelled = false;
+
+    const init = () => {
+      if (cancelled) return;
       if (window.netlifyIdentity) {
         setReady(true);
         const current = window.netlifyIdentity.currentUser();
         setUser(current);
-        window.netlifyIdentity.on("init", (u) => setUser(u ?? null));
-        window.netlifyIdentity.on("login", (u) => setUser(u ?? null));
-        window.netlifyIdentity.on("logout", () => setUser(null));
+
+        const onInit = (u: NetlifyUser | null | undefined) => {
+          if (!cancelled) setUser(u ?? null);
+        };
+        const onLogin = (u: NetlifyUser | null | undefined) => {
+          if (!cancelled) {
+            setUser(u ?? null);
+            // Redirect to home after login to refresh server context.
+            if (u) window.location.href = "/";
+          }
+        };
+        const onLogout = () => {
+          if (!cancelled) setUser(null);
+        };
+
+        window.netlifyIdentity.on("init", onInit);
+        window.netlifyIdentity.on("login", onLogin);
+        window.netlifyIdentity.on("logout", onLogout);
       } else {
-        setTimeout(checkIdentity, 500);
+        // Widget not loaded yet — retry.
+        setTimeout(init, 300);
       }
     };
-    checkIdentity();
+
+    init();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (!ready || !window.netlifyIdentity) return null;
@@ -79,7 +102,7 @@ export function NetlifyIdentityButton() {
       variant="ghost"
       size="sm"
       className="gap-1.5"
-      onClick={() => window.netlifyIdentity?.open()}
+      onClick={() => window.netlifyIdentity?.open("login")}
     >
       <User className="size-4" />
       <span className="hidden sm:inline">Log in</span>
