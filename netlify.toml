@@ -4,12 +4,19 @@
 
 [build.environment]
   NEXT_USE_NETLIFY = "true"
-  # Set DATABASE_URL in the Netlify dashboard → Site settings → Environment variables
-  # Use the Neon POOLED connection string (host contains "-pooler"):
-  # postgresql://USER:PASS@ep-xxxxx-pooler.REGION.aws.neon.tech/DBNAME?sslmode=require&pgbouncer=true&connect_timeout=15
+  # Set these in the Netlify dashboard → Site settings → Environment variables:
+  # DATABASE_URL                    — Neon pooled connection string
+  # NEXT_PUBLIC_VAPID_PUBLIC_KEY    — VAPID public key (from `npx web-push generate-vapid-keys`)
+  # VAPID_PRIVATE_KEY               — VAPID private key (server-only)
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# The Next.js plugin handles all routing automatically.
-# Files in /public (_headers, _redirects) are served as static assets.
+# ─── Scheduled Functions ────────────────────────────────────────────────────
+# Runs every 15 minutes to check for due event alerts and send web push
+# notifications to all subscribed browsers (even when the PWA is closed).
+[functions]
+  directory = "netlify/functions"
+
+[functions."check-alerts"]
+  schedule = "*/15 * * * *"

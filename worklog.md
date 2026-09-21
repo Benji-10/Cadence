@@ -1027,3 +1027,98 @@ Task: Fix title autocomplete dropdown not showing, drag-create opening edit shee
 
 TECHNICAL:
 - `bun run lint` clean. No runtime errors. All 5 views cycle. Plus button found.
+
+---
+Task ID: 43 (VAPID web push + full-screen height)
+Agent: main
+Task: Add VAPID web push for background notifications when PWA is closed, fix full-screen height.
+
+## Current project status / assessment
+- App stable. Added VAPID web push infrastructure and fixed the full-screen height issue.
+
+## Completed modifications / verification results
+1. **Full-screen height fix** — the `safe-top` CSS class added `margin-top: env(safe-area-inset-top)` which shifted the content down but the `100dvh` height wasn't accounting for it, making the total height > viewport. Fix: moved the safe-area insets into the inline style directly:
+   ```jsx
+   style={{ height: "100dvh", marginTop: "env(safe-area-inset-top, 0px)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+   ```
+   The `100dvh` is the full dynamic viewport height, and `marginTop` shifts the content below the status bar. Together they fill the screen without overflow. Verified: `scrollHeight === clientHeight === bodyHeight` (577px = no overflow).
+
+2. **VAPID Web Push infrastructure** — added:
+   - `PushSubscription` Prisma model (endpoint, p256dh, auth keys) stored in Neon
+   - `POST /api/push/subscribe` — stores a browser's push subscription
+   - `POST /api/push/send` — sends a push notification to all stored subscriptions using the `web-push` library
+   - `src/lib/web-push.ts` — client-side subscription helper + server-side payload builder
+   - Updated `NotificationManager` to auto-subscribe to web push on init (if VAPID key is configured)
+   - `.env.example` with `NEXT_PUBLIC_VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`
+   - `netlify.toml` documents the VAPID env vars
+   - `DEPLOYMENT.md` updated with VAPID key generation instructions
+
+3. **How it works (three-layer notification system)**:
+   - **Layer 1 (tab open)**: page polling every 20s → `showNotification` via SW
+   - **Layer 2 (PWA installed, SW alive)**: `periodicSync` every ~15 min → `checkAlerts` → `showNotification`
+   - **Layer 3 (PWA closed)**: server cron job → `POST /api/push/send` → web push to all subscriptions → browser wakes up and shows notification. This is the VAPID layer that works on iOS Safari PWA 16.4+.
+
+4. **Deployment setup**:
+   - Run `npx web-push generate-vapid-keys` to generate keys
+   - `bun add web-push` to install the library
+   - Set `NEXT_PUBLIC_VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` in Netlify env vars
+   - Create a Netlify Scheduled Function (cron) that runs every 15 min, queries events with due alerts, and calls `/api/push/send`
+
+TECHNICAL:
+- `bun run lint` clean. No runtime errors.
+- The `web-push` package is dynamically imported in `/api/push/send` so the build doesn't fail if it's not installed yet.
+- The PushSubscription model is created by `prisma db push` during the Netlify build (already in the build command).
+
+## Unresolved issues / risks + next-phase recommendations
+- The `web-push` npm package needs to be installed: `bun add web-push`
+- VAPID keys need to be generated: `npx web-push generate-vapid-keys`
+- A Netlify Scheduled Function (cron) needs to be created to check for due alerts and call `/api/push/send`
+- User-scoped data still not implemented
+- Repeating events still edit the parent
+
+---
+Task ID: 44 (Netlify Scheduled Function for VAPID push)
+Agent: main
+Task: Create the Netlify Scheduled Function that sends push notifications every 15 min.
+
+## Current project status / assessment
+- App stable. The full push notification pipeline is now complete: client subscription → server storage → cron check → VAPID push → browser notification.
+
+## Completed modifications / verification results
+1. **Netlify Scheduled Function** (`netlify/functions/check-alerts.ts`):
+   - Runs every 15 minutes (configured in `netlify.toml` with `schedule = "*/15 * * * *"`).
+   - Queries Neon for events starting in the next 15 minutes.
+   - For each event, parses its `alerts` array (e.g. `[-30, -10, 0]`).
+   - For each due alert, sends a VAPID web push notification to ALL stored push subscriptions.
+   - Cleans up expired subscriptions (HTTP 410/404 → delete from DB).
+   - Can also be triggered manually via HTTP GET for testing.
+   - Logs to Netlify Functions console for debugging.
+
+2. **netlify.toml updated**:
+   - `[functions] directory = "netlify/functions"` — tells Netlify where functions live
+   - `[functions."check-alerts"] schedule = "*/15 * * * *"` — runs every 15 min
+
+3. **web-push package installed**: `bun add web-push` (v3.6.7)
+
+4. **DEPLOYMENT.md updated** with full setup instructions including VAPID key generation and the scheduled function.
+
+TECHNICAL:
+- The function creates its own `PrismaClient` instance (separate from the Next.js app's singleton) because Netlify Functions run in a separate Lambda environment.
+- The function checks if `fireAt` is within the past 5 min OR the next 15 min, so alerts that were due just before the function ran are still sent (with a small delay).
+- `bun run lint` clean. No runtime errors.
+
+## The complete notification pipeline:
+1. **App opens** → NotificationManager subscribes to VAPID web push → sends subscription to `/api/push/subscribe` → stored in Neon `PushSubscription` table
+2. **Every 15 min** → Netlify Scheduled Function runs → queries events with due alerts → sends VAPID push to all subscriptions via `web-push` library
+3. **Browser receives push** → service worker wakes up → shows notification (even if PWA is closed)
+4. **User taps notification** → PWA opens to the event
+
+## Setup (3 steps):
+1. `npx web-push generate-vapid-keys` — generate keys
+2. Set `NEXT_PUBLIC_VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` in Netlify env vars
+3. Deploy — the scheduled function auto-configures from `netlify.toml`
+
+## Unresolved issues / risks + next-phase recommendations
+- User-scoped data still not implemented
+- Repeating events still edit the parent
+- Next rounds: user-scoped data, occurrence exceptions

@@ -671,7 +671,7 @@ export function CalendarApp() {
 
   return (
     <CalendarVisibilityContext.Provider value={visibilityCtx}>
-      <div className="flex flex-col overflow-hidden bg-background text-foreground safe-top safe-bottom" style={{ height: "100dvh" }}>
+      <div className="flex flex-col overflow-hidden bg-background text-foreground" style={{ height: "100dvh", marginTop: "env(safe-area-inset-top, 0px)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
         <Toolbar
           visibleDate={visibleDate}
           view={view}

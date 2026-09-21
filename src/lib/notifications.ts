@@ -21,17 +21,72 @@ class NotificationManager {
   private swRegistration: ServiceWorkerRegistration | null = null;
 
   constructor() {
-    // Cache the service worker registration + register periodic sync.
+    // Cache the service worker registration + register periodic sync + web push.
     if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
       navigator.serviceWorker.getRegistration().then((reg) => {
         this.swRegistration = reg;
         this.registerPeriodicSync(reg);
+        this.subscribeToPush(reg);
       });
       navigator.serviceWorker.ready.then((reg) => {
         this.swRegistration = reg;
         this.registerPeriodicSync(reg);
+        this.subscribeToPush(reg);
       });
     }
+  }
+
+  // Subscribe to VAPID web push so the server can send push notifications
+  // even when the PWA is completely closed. This is the key difference from
+  // SW-based periodicSync — web push works on iOS Safari PWAs (16.4+).
+  private async subscribeToPush(reg: ServiceWorkerRegistration | null) {
+    if (!reg) return;
+    try {
+      const existing = await reg.pushManager.getSubscription();
+      if (existing) return; // already subscribed
+
+      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      if (!vapidKey) return; // VAPID not configured
+
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: this.urlBase64ToUint8Array(vapidKey),
+      });
+
+      // Send subscription to server.
+      await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endpoint: sub.endpoint,
+          keys: {
+            p256dh: this.arrayBufferToBase64(sub.getKey("p256dh")),
+            auth: this.arrayBufferToBase64(sub.getKey("auth")),
+          },
+        }),
+      });
+    } catch {
+      // Push not supported or permission denied
+    }
+  }
+
+  private urlBase64ToUint8Array(base64String: string): Uint8Array {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const rawData = atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  }
+
+  private arrayBufferToBase64(buffer: ArrayBuffer | null): string {
+    if (!buffer) return "";
+    const bytes = new Uint8Array(buffer);
+    let str = "";
+    for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+    return btoa(str);
   }
 
   // Register periodic background sync so alerts fire even when the PWA is closed.
