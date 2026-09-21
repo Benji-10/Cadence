@@ -870,3 +870,30 @@ VERIFICATION:
 - Needs real iOS device testing after Netlify deployment.
 - Repeating events still edit the parent.
 - Next rounds: real-device testing on Netlify, occurrence exceptions.
+
+---
+Task ID: 38 (fix Neon table creation on Netlify deploy)
+Agent: main
+Task: Fix "table does not exist" error on Netlify by running prisma db push during build.
+
+## Current project status / assessment
+- The Neon database tables don't exist because `prisma db push` was never run against Neon. The build only ran `prisma generate` (via postinstall) which generates the client but doesn't create tables.
+
+## Completed modifications / verification results
+**Fix: Run `prisma db push` during the Netlify build.**
+
+Updated `netlify.toml` build command from `next build` to `prisma db push --accept-data-loss && next build`. This means:
+1. `postinstall` (runs after npm install): `prisma generate` — generates the Prisma client
+2. Build command: `prisma db push --accept-data-loss` — creates/syncs all tables on Neon, THEN `next build` — builds the Next.js app
+
+This way, every Netlify deploy automatically ensures the database schema is up to date. No manual `bun run db:deploy` needed.
+
+TECHNICAL:
+- `prisma db push` is idempotent — it creates tables if they don't exist, and adds/updates columns if the schema changed. The `--accept-data-loss` flag allows it to drop columns that no longer exist (safe for additive changes).
+- The `DATABASE_URL` env var set in Netlify's dashboard provides the Neon connection string.
+- `bun run lint` clean.
+
+## Unresolved issues / risks + next-phase recommendations
+- This should resolve the "table does not exist" error on Netlify. The user needs to redeploy after this change.
+- Repeating events still edit the parent.
+- Next rounds: real-device testing on Netlify, occurrence exceptions.

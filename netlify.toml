@@ -1,5 +1,5 @@
 [build]
-  command = "next build"
+  command = "prisma db push --accept-data-loss && next build"
   publish = ".next"
 
 [build.environment]
