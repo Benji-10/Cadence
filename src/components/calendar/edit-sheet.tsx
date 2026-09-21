@@ -72,6 +72,8 @@ import {
   useSuggest,
 } from "@/hooks/use-calendar-data";
 import { useSettings } from "@/lib/settings-store";
+import { useTemplates } from "@/lib/templates-store";
+import { TemplatesBar } from "./templates-bar";
 import { LocationAutocomplete } from "./location-autocomplete";
 import { LocationDrawer } from "./location-drawer";
 import { TitleAutocomplete } from "./title-autocomplete";
@@ -173,7 +175,6 @@ export function EditSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side={sheetSide}
-        onInteractOutside={(e) => e.preventDefault()}
         className={cn(
           "gap-0 p-0",
           isMobile
@@ -234,6 +235,7 @@ function EditForm({
     []
   );
   const settingsAlerts = useSettings((s) => s.defaultAlerts);
+  const addTemplate = useTemplates((s) => s.addTemplate);
 
   // Initialise from `state` synchronously (lazy useState initializers).
   const initial = useMemo(() => {
@@ -450,6 +452,54 @@ function EditForm({
     }
   };
 
+  // Save the current event's title/duration/calendar/location as a reusable
+  // quick-add template.
+  const handleSaveAsTemplate = () => {
+    if (!title.trim()) {
+      toast.error("Type a title first.");
+      return;
+    }
+    const dur = Math.max(
+      15,
+      Math.round(
+        (parseISO(end).getTime() - parseISO(start).getTime()) / 60000
+      )
+    );
+    addTemplate({
+      title: title.trim(),
+      durationMins: dur,
+      calendarId,
+      location: location || undefined,
+      color,
+      category: inferred.category,
+      flexibility: inferred.flexibility,
+      locationType: inferred.locationType,
+    });
+    toast.success(`Saved "${title.trim()}" as a template.`);
+  };
+
+  // Apply a template's fields to the current form.
+  const applyTemplate = (t: {
+    title: string;
+    durationMins: number;
+    calendarId?: string;
+    location?: string;
+    color?: string | null;
+    category?: string;
+    flexibility?: string;
+    locationType?: string;
+  }) => {
+    setTitle(t.title);
+    if (t.location !== undefined) setLocation(t.location);
+    if (t.calendarId) setCalendarId(t.calendarId);
+    if (t.color !== undefined) setColor(t.color);
+    // Re-derive start/end: keep the current start, adjust end to the template duration.
+    const startMs = parseISO(start).getTime();
+    const newEnd = new Date(startMs + t.durationMins * 60000).toISOString();
+    setEnd(newEnd);
+    toast.success(`Applied "${t.title}" template.`);
+  };
+
   const handleFindBestSlot = async () => {
     if (!title.trim()) {
       toast.error("Type a title first so I know what to schedule.");
@@ -521,7 +571,7 @@ function EditForm({
             </button>
           )}
           {/* Type-ahead: search previous events, select to copy all data */}
-          {state?.mode === "create" && title.trim().length >= 3 && (
+          {state?.mode === "create" && title.trim().length >= 2 && (
             <TitleAutocomplete
               value={title}
               onChange={() => {}}
@@ -1022,6 +1072,24 @@ function EditForm({
           </Button>
         )}
 
+        {/* Quick-add templates (create mode only) */}
+        {state?.mode === "create" && (
+          <div className="mt-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[11px] font-medium text-muted-foreground">
+                Quick add
+              </span>
+              <button
+                onClick={handleSaveAsTemplate}
+                className="text-[11px] font-medium text-emerald-600 hover:underline dark:text-emerald-400"
+                disabled={!title.trim()}
+              >
+                + Save current as template
+              </button>
+            </div>
+            <TemplatesBar onApply={applyTemplate} />
+          </div>
+        )}
       </div>
 
       <SheetFooter className="flex-row items-center justify-between gap-2 border-t border-border px-4 py-3">
@@ -1120,11 +1188,5 @@ function mergeTime(date: Date, hhmm: string): Date {
   const [h, m] = hhmm.split(":").map(Number);
   const d = new Date(date);
   d.setHours(h, m, 0, 0);
-  return d;
-}
-
-function mergeHM(date: Date, hour: number, minute: number): Date {
-  const d = new Date(date);
-  d.setHours(hour, minute, 0, 0);
   return d;
 }

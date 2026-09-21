@@ -36,24 +36,39 @@ class NotificationManager {
     }
   }
 
+  // Register periodic background sync so alerts fire even when the PWA is closed.
+  private async registerPeriodicSync(reg: ServiceWorkerRegistration | null) {
+    if (!reg) return;
+    try {
+      if ("periodicSync" in reg) {
+        const status = await (reg as any).periodicSync.getPermissionState?.();
+        if (status === "granted") {
+          await (reg as any).periodicSync.register("check-alerts", {
+            minInterval: 15 * 60 * 1000,
+          });
+        }
+      }
+    } catch {
+      // periodicSync not supported
+    }
+  }
+
   // Subscribe to VAPID web push so the server can send push notifications
-  // even when the PWA is completely closed. This is the key difference from
-  // SW-based periodicSync — web push works on iOS Safari PWAs (16.4+).
+  // even when the PWA is completely closed. This works on iOS Safari PWA 16.4+.
   private async subscribeToPush(reg: ServiceWorkerRegistration | null) {
     if (!reg) return;
     try {
       const existing = await reg.pushManager.getSubscription();
-      if (existing) return; // already subscribed
+      if (existing) return;
 
       const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-      if (!vapidKey) return; // VAPID not configured
+      if (!vapidKey) return;
 
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: this.urlBase64ToUint8Array(vapidKey),
       });
 
-      // Send subscription to server.
       await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -75,9 +90,7 @@ class NotificationManager {
     const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
     const rawData = atob(base64);
     const outputArray = new Uint8Array(rawData.length);
-    for (let i = 0; i < rawData.length; ++i) {
-      outputArray[i] = rawData.charCodeAt(i);
-    }
+    for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
     return outputArray;
   }
 
@@ -89,24 +102,6 @@ class NotificationManager {
     return btoa(str);
   }
 
-  // Register periodic background sync so alerts fire even when the PWA is closed.
-  private async registerPeriodicSync(reg: ServiceWorkerRegistration | null) {
-    if (!reg) return;
-    try {
-      if ("periodicSync" in reg) {
-        const status = await (reg as any).periodicSync.getPermissionState?.();
-        if (status === "granted") {
-          await (reg as any).periodicSync.register("check-alerts", {
-            minInterval: 15 * 60 * 1000, // 15 min
-          });
-        }
-      }
-    } catch {
-      // periodicSync not supported — the page-based polling + message-based
-      // scheduling still works while the tab is open.
-    }
-  }
-
   setEvents(events: CalendarEvent[]) {
     this.events = events;
     // Keep fired set bounded — only remember alerts from the last 2 hours.
@@ -115,49 +110,7 @@ class NotificationManager {
       const ts = Number(key.split("|")[2] || 0);
       if (ts < cutoff) this.fired.delete(key);
     }
-
-    // Schedule alerts via the service worker (for when the tab is backgrounded).
-    this.scheduleViaServiceWorker(events);
-
     this.tick();
-  }
-
-  // Send SCHEDULE_ALERT messages to the SW for all upcoming alerts within 24h.
-  // The SW uses setTimeout to fire showNotification at the right time, even
-  // if the tab is backgrounded (as long as the SW stays alive).
-  private scheduleViaServiceWorker(events: CalendarEvent[]) {
-    if (!this.swRegistration?.active) return;
-    const now = Date.now();
-    const maxFuture = now + 24 * 60 * 60 * 1000; // 24h ahead
-
-    for (const ev of events) {
-      const startMs = new Date(ev.start).getTime();
-      if (startMs > maxFuture) continue; // too far ahead
-
-      for (const offset of ev.alerts ?? []) {
-        const fireAt = startMs + offset * 60 * 1000;
-        if (fireAt <= now || fireAt > maxFuture) continue;
-
-        const tag = `${ev.id}-${offset}`;
-        const when = offset === 0 ? "starts now" : `starts in ${Math.abs(offset)} min`;
-        const title = `${ev.title} ${when}`;
-        const body = [
-          ev.location ? `📍 ${ev.location}` : null,
-          offset === 0 ? "It's starting now." : `Heads up — beginning ${Math.abs(offset)} minutes.`,
-        ]
-          .filter(Boolean)
-          .join(" · ");
-
-        this.swRegistration.active.postMessage({
-          type: "SCHEDULE_ALERT",
-          id: ev.id,
-          title,
-          body,
-          fireAt,
-          tag,
-        });
-      }
-    }
   }
 
   setAlertCallback(cb: AlertCb | null) {

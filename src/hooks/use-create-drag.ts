@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { HOUR_HEIGHT, snapMins as snapMinsFn } from "@/lib/calendar-ui";
+import { HOUR_HEIGHT, snapMins } from "@/lib/calendar-ui";
 
 export interface CreatePreview {
   startY: number; // px within the column
@@ -100,7 +100,7 @@ export function useCreateDrag({ onCreate, rangeFromMins }: UseCreateDragOptions)
       // Touch: if the timer fired (preview was shown), create at the held time.
       if (start.isTouch && wasPreview) {
         const y = start.clientY - start.columnTop;
-        const mins = Math.max(0, Math.min(23 * 60 + 45, snapMinsFn((y / HOUR_HEIGHT) * 60)));
+        const mins = Math.max(0, Math.min(23 * 60 + 45, snapMins((y / HOUR_HEIGHT) * 60)));
         const { start: isoStart, end: isoEnd } = optsRef.current.rangeFromMins(mins, mins + 60);
         optsRef.current.onCreate({ start: isoStart, end: isoEnd });
         return;
@@ -110,8 +110,8 @@ export function useCreateDrag({ onCreate, rangeFromMins }: UseCreateDragOptions)
       if (!start.isTouch) {
         const y0 = start.clientY - start.columnTop;
         const y1 = Math.max(0, e.clientY - start.columnTop);
-        const minsA = snapMinsFn((y0 / HOUR_HEIGHT) * 60);
-        const minsB = snapMinsFn((y1 / HOUR_HEIGHT) * 60);
+        const minsA = snapMins((y0 / HOUR_HEIGHT) * 60);
+        const minsB = snapMins((y1 / HOUR_HEIGHT) * 60);
         if (!movedRef.current) {
           // pure tap → let the column's onClick handle it
           return;

@@ -60,10 +60,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Netlify Identity widget — loaded from Netlify's CDN.
-            On Netlify, this automatically connects to your Identity instance.
-            In sandbox/localhost, it 404s and is a no-op. */}
-        <script src="https://identity.netlify.com/v1/netlify-identity-widget.js" async />
+        {/* Netlify Identity widget — loads only if present (graceful no-op in sandbox) */}
         <script
           dangerouslySetInnerHTML={{
             __html: `if (window.netlifyIdentity) { window.netlifyIdentity.on("init", user => { if (!user) { window.netlifyIdentity.on("login", () => document.location.href = "/"); } }); }`,

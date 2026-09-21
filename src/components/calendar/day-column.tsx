@@ -3,7 +3,7 @@
 import { useMemo, useRef, useEffect } from "react";
 import { isSameDay, parseISO, format } from "date-fns";
 import type { Calendar, CalendarEvent } from "@/lib/types";
-import { HOUR_HEIGHT, layoutEvents, snapMins as snapMinsFn, conflictingEventIds } from "@/lib/calendar-ui";
+import { HOUR_HEIGHT, layoutEvents, snapMins, conflictingEventIds } from "@/lib/calendar-ui";
 import { EventBlock } from "./event-block";
 import { NowLine } from "./now-line";
 import { useEventDrag } from "@/hooks/use-event-drag";
@@ -109,15 +109,36 @@ export function DayColumn({
 
   const dayStartMs = day.getTime();
 
+  // Long-press to create events on touch (1s hold on empty space).
+  const createTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const createOriginRef = useRef<{ x: number; y: number } | null>(null);
+
+  const handleCreateLongPress = (clientY: number) => {
+    if (!onCreate) return;
+    const rect = columnRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const y = clientY - rect.top;
+    const mins = Math.max(0, Math.min(23 * 60 + 45, snapMins((y / HH) * 60)));
+    const start = new Date(day);
+    start.setHours(0, 0, 0, 0);
+    start.setMinutes(mins);
+    const end = new Date(start.getTime() + 60 * 60_000);
+    onCreate({
+      start: start.toISOString(),
+      end: end.toISOString(),
+      calendarId: defaultCalendarId,
+    });
+  };
+
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (drag.didDragRef.current) return;
     if (createDrag.consumeMoved()) return;
-    // On touch, creation is handled by useCreateDrag's long-press, not click.
+    // On touch, creation is handled by long-press, not click.
     if (e.detail === 0) return;
     if (!onCreate) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const y = e.clientY - rect.top;
-    const mins = Math.max(0, Math.min(23 * 60 + 45, snapMinsFn((y / HH) * 60, snapMins)));
+    const mins = Math.max(0, Math.min(23 * 60 + 45, snapMins((y / HH) * 60)));
     const start = new Date(day);
     start.setHours(0, 0, 0, 0);
     start.setMinutes(mins);
@@ -142,14 +163,42 @@ export function DayColumn({
       )}
       style={{
         height: 24 * HH,
-        touchAction: "none",
+        touchAction: "pan-y",
         WebkitUserSelect: "none",
         userSelect: "none",
       }}
       onPointerDown={(e) => {
         drag.resetDrag();
-        // useCreateDrag handles the long-press timer + preview internally.
+        // For touch on empty space, start a long-press timer to create.
+        if (e.pointerType === "touch" && onCreate) {
+          createOriginRef.current = { x: e.clientX, y: e.clientY };
+          createTimerRef.current = setTimeout(() => {
+            if (createOriginRef.current) {
+              handleCreateLongPress(createOriginRef.current.y);
+              createOriginRef.current = null;
+            }
+          }, 600);
+        }
         createDrag.onPointerDown(e);
+      }}
+      onPointerMove={(e) => {
+        // Cancel create-timer if finger moves (it's a scroll).
+        if (createTimerRef.current && createOriginRef.current) {
+          const dx = Math.abs(e.clientX - createOriginRef.current.x);
+          const dy = Math.abs(e.clientY - createOriginRef.current.y);
+          if (dx > 8 || dy > 8) {
+            clearTimeout(createTimerRef.current);
+            createTimerRef.current = null;
+            createOriginRef.current = null;
+          }
+        }
+      }}
+      onPointerUp={() => {
+        if (createTimerRef.current) {
+          clearTimeout(createTimerRef.current);
+          createTimerRef.current = null;
+        }
+        createOriginRef.current = null;
       }}
       onClick={handleClick}
     >

@@ -38,7 +38,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { CalendarManager } from "./calendar-manager";
-import { NetlifyIdentityButton } from "./netlify-identity-button";
 import { cn } from "@/lib/utils";
 
 interface ToolbarProps {
@@ -89,7 +88,7 @@ export function Toolbar({
 
   return (
     <header
-      className="sticky top-0 z-30 border-b border-border bg-background"
+      className="glass sticky top-0 z-30 border-b border-border bg-background/80"
       role="banner"
     >
       <div className="flex h-14 items-center gap-2 px-3 sm:px-4">
@@ -286,9 +285,6 @@ export function Toolbar({
               <Moon className="size-4" />
             )}
           </Button>
-
-          {/* Netlify Identity login/account */}
-          <NetlifyIdentityButton />
 
           {/* More menu */}
           <DropdownMenu>

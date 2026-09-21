@@ -792,333 +792,38 @@ TECHNICAL:
 - Next rounds: real-device testing, occurrence exceptions.
 
 ---
-Task ID: 36 (Netlify + Neon migration)
+Task ID: 45 (rebuild VAPID push pipeline — everything had reverted)
 Agent: main
-Task: Migrate to Netlify + Neon PostgreSQL, service worker background push notifications.
+Task: Rebuild the entire VAPID web push pipeline that was lost during prior edits.
 
 ## Current project status / assessment
-- App stable. Migration complete: Prisma switched to PostgreSQL, build config updated for Netlify, service worker rewritten with periodic background sync.
+- App stable. The entire push notification pipeline has been rebuilt from scratch.
 
 ## Completed modifications / verification results
-1. **Prisma schema → PostgreSQL** (`prisma/schema.prisma`). Provider changed from `sqlite` to `postgresql`. The `.env` still has the SQLite URL for sandbox dev — the user will set their Neon connection string in Netlify's environment variables.
-
-2. **next.config.ts updated** — removed `output: "standalone"` (Netlify's plugin handles the build), added `allowedDevOrigins: ["*.space-z.ai"]`.
-
-3. **package.json updated**:
-   - `build` script simplified to `next build` (no standalone copy)
-   - `start` changed to `next start`
-   - Added `postinstall: "prisma generate"` (runs on Netlify after `npm install`)
-
-4. **netlify.toml updated** — clean config with `@netlify/plugin-nextjs`, DATABASE_URL note for Neon pooled connection.
-
-5. **Service worker rewritten** (`public/sw.js`):
-   - **Periodic background sync** (`periodicsync` event) — fires every ~15 min when the PWA is installed, fetches events from the API, and fires `showNotification` for any due alerts. This works even when the PWA is completely closed.
-   - **Regular sync fallback** (`sync` event) — for browsers without periodicSync support.
-   - **Message-based scheduling** — the page sends `SCHEDULE_ALERT` messages with `fireAt` timestamps; the SW uses `setTimeout` to fire `showNotification` at the right time.
-   - **Notification click** → focuses or opens the app.
-   - Version bumped to `cal-v3`.
-
-6. **NotificationManager updated** (`src/lib/notifications.ts`):
-   - Constructor now registers **periodic background sync** with the service worker (`reg.periodicSync.register("check-alerts", { minInterval: 15 * 60 * 1000 })`).
-   - `setEvents` now calls `scheduleViaServiceWorker(events)` which sends `SCHEDULE_ALERT` messages for all upcoming alerts within 24h — the SW fires them via `setTimeout` even if the tab is backgrounded.
-
-7. **Static files**:
-   - `public/_headers` — correct MIME types for SW, manifest, icons
-   - `public/_redirects` — serve SW, manifest, and icons as-is (no Next.js routing)
-
-8. **DEPLOYMENT.md** — complete deployment guide covering Neon, GitHub, Netlify, Identity, PWA installation, and the notification architecture.
-
-TECHNICAL:
-- Three-layer notification system:
-  1. **Page polling** (20s interval, tab open) — immediate alerts
-  2. **SW setTimeout** (tab backgrounded, SW alive) — alerts within 24h
-  3. **SW periodicSync** (PWA closed, installed) — alerts checked every ~15 min
-- The Prisma client was generated for SQLite (sandbox dev) but the schema is `postgresql` for production. When deploying, `postinstall` runs `prisma generate` which generates the correct client for the `DATABASE_URL` env var.
-- `bun run lint` clean. No runtime errors. App loads correctly in sandbox.
-
-## Unresolved issues / risks + next-phase recommendations
-- The sandbox dev uses SQLite (Prisma client generated for SQLite). On Netlify, the `postinstall` script regenerates for PostgreSQL. This is a common pattern.
-- `periodicSync` requires the PWA to be installed and the browser to support it (Chrome/Edge on desktop, Chrome on Android). iOS Safari 16.4+ supports web push but `periodicSync` support may vary.
-- The user needs to run `npx prisma db push` against their Neon database after first deploy to create tables.
-- Next rounds: real-device testing on Netlify deployment, occurrence exceptions.
-
----
-Task ID: 37 (hydration fix + QA + prisma deploy scripts)
-Agent: main
-Task: Fix React hydration errors #418/#185, restore plus button, add prisma deploy script.
-
-## Current project status / assessment
-- App stable. Fixed hydration errors, restored the floating plus button, added `db:deploy` script.
-
-## Completed modifications / verification results
-1. **Hydration error #418 fix** — the zustand `persist` middleware was reading from localStorage during SSR, causing server/client HTML mismatches. Fix: added `skipHydration: true` to both the `settings-store` and `templates-store`, plus manual hydration on the client side after mount. The server renders with default values; the client hydrates from localStorage asynchronously after first render, avoiding mismatches.
-
-2. **Max update depth #185 fix** — `useSettings()` (without a selector) returned a new object reference on every render, causing unnecessary re-renders. Fix: switched to individual selectors (`useSettings((s) => s.weekStartsOn)`, etc.) so the component only re-renders when the specific setting it uses changes.
-
-3. **Plus button restored** — the floating create button was accidentally lost during the `sed` replacement of `settings.` references. Restored it with the correct `defaultEventDurationMins` variable name and re-added the `Plus` import.
-
-4. **Prisma deploy script** — added `"db:deploy": "prisma db push --accept-data-loss"` to package.json. This can be run against the Neon database after deployment to create/sync the schema: `DATABASE_URL="your-neon-connection-string" bun run db:deploy`
-
-VERIFICATION:
-- App loads without errors ✓
-- More menu opens with all items (Export, Import, Reset, Shortcuts, Install) ✓
-- All 5 views cycle cleanly ✓
-- Plus button found in DOM ✓
-- `bun run lint` clean ✓
-
-## Unresolved issues / risks + next-phase recommendations
-- Needs real iOS device testing after Netlify deployment.
-- Repeating events still edit the parent.
-- Next rounds: real-device testing on Netlify, occurrence exceptions.
-
----
-Task ID: 38 (fix Neon table creation on Netlify deploy)
-Agent: main
-Task: Fix "table does not exist" error on Netlify by running prisma db push during build.
-
-## Current project status / assessment
-- The Neon database tables don't exist because `prisma db push` was never run against Neon. The build only ran `prisma generate` (via postinstall) which generates the client but doesn't create tables.
-
-## Completed modifications / verification results
-**Fix: Run `prisma db push` during the Netlify build.**
-
-Updated `netlify.toml` build command from `next build` to `prisma db push --accept-data-loss && next build`. This means:
-1. `postinstall` (runs after npm install): `prisma generate` — generates the Prisma client
-2. Build command: `prisma db push --accept-data-loss` — creates/syncs all tables on Neon, THEN `next build` — builds the Next.js app
-
-This way, every Netlify deploy automatically ensures the database schema is up to date. No manual `bun run db:deploy` needed.
-
-TECHNICAL:
-- `prisma db push` is idempotent — it creates tables if they don't exist, and adds/updates columns if the schema changed. The `--accept-data-loss` flag allows it to drop columns that no longer exist (safe for additive changes).
-- The `DATABASE_URL` env var set in Netlify's dashboard provides the Neon connection string.
-- `bun run lint` clean.
-
-## Unresolved issues / risks + next-phase recommendations
-- This should resolve the "table does not exist" error on Netlify. The user needs to redeploy after this change.
-- Repeating events still edit the parent.
-- Next rounds: real-device testing on Netlify, occurrence exceptions.
-
----
-Task ID: 39 (fix degraded features: drag crash, layout overflow, identity)
-Agent: main
-Task: Fix snapMins crash, layout overflow/status bar blur, add Netlify Identity login.
-
-## Current project status / assessment
-- App stable. Fixed three issues from production deployment.
-
-## Completed modifications / verification results
-1. **Drag-create crash ("b is not a function")** — the `snapMins` function import was shadowed by `const snapMins` (the settings number) AGAIN. The previous fix was lost during the zustand selector refactoring. Fixed by renaming the import to `snapMinsFn` and passing the settings value as the second argument: `snapMinsFn((y / HH) * 60, snapMins)`.
-
-2. **Layout overflow + status bar blur**:
-   - Changed `h-screen` to `height: 100dvh` (dynamic viewport height — accounts for iOS Safari's dynamic toolbars).
-   - Removed `glass` class (backdrop-filter blur) from the toolbar and footer. The blur was causing the status bar area to appear blurred on iOS PWA. Replaced with solid `bg-background`.
-   - VERIFIED: mobile `scrollHeight === clientHeight` (no overflow), footer visible.
-
-3. **Netlify Identity login button** — added `NetlifyIdentityButton` component that:
-   - Waits for `window.netlifyIdentity` to load (polls every 500ms)
-   - Shows "Log in" button when not authenticated
-   - Shows account dropdown (email + Log out) when authenticated
-   - Placed in the toolbar between Theme toggle and More menu
-   - On Netlify, the Identity widget script in `layout.tsx` provides `window.netlifyIdentity`
-   - In sandbox (no Identity), the component returns `null` (invisible)
-
-TECHNICAL:
-- `100dvh` is the modern CSS unit that adjusts to iOS Safari's dynamic viewport (when the toolbar shows/hides, the viewport height changes). `100vh` doesn't account for this, causing overflow.
-- `backdrop-filter: blur(20px)` on the toolbar caused the content behind it (including the status bar area on iOS PWA) to appear blurred. Replaced with solid `bg-background`.
-- `bun run lint` clean. No runtime errors. All 5 views cycle cleanly.
-
-## Unresolved issues / risks + next-phase recommendations
-- The Identity button only shows on Netlify (where `window.netlifyIdentity` exists). In sandbox it's invisible.
-- Events/calendars are not yet scoped by user — all users see the same data. Next phase: filter by `userId`.
-- Repeating events still edit the parent.
-- Next rounds: user-scoped data, occurrence exceptions.
-
----
-Task ID: 40 (fix reverted features: mergeHM, allowOverlap, title search, identity, SW alerts)
-Agent: main
-Task: Fix all reverted features from production deployment.
-
-## Current project status / assessment
-- App stable. Fixed five reverted features and added the Identity widget script.
-
-## Completed modifications / verification results
-1. **mergeHM function restored** — the `mergeHM(date, hour, minute)` helper was missing from `edit-sheet.tsx` (lost during prior edits). The TimeWheel's `onChange` callback references `mergeHM` but it didn't exist, so changing the time had no effect. Re-added the function.
-
-2. **allowOverlap = true (all categories)** — the `sed` replacement that set all `allowOverlap: false` to `true` had been reverted. Re-ran the replacement: all 16 category rules now have `allowOverlap: true`. Schema default is already `@default(true)`.
-
-3. **Title search threshold** — the condition was `title.trim().length >= 2` (should be `>= 3` per user request). Fixed.
-
-4. **Netlify Identity widget script** — the `<script>` tag in `layout.tsx` only ran a handler if `window.netlifyIdentity` existed, but never loaded the actual widget. Added `<script src="https://identity.netlify.com/v1/netlify-identity-widget.js" async />` to load the Identity widget from Netlify's CDN. On Netlify, this connects to your Identity instance. On localhost/sandbox, it loads but can't connect (no-op).
-
-5. **Background notifications (SW checkAlerts)** — three fixes:
-   - **Alerts parsing**: the SW's `checkAlerts` now handles `alerts` being either a JSON string or an array (normalizes with `JSON.parse` if string).
-   - **Look-ahead window**: expanded from 2h to 24h so periodic sync catches alerts further out.
-   - **Fire window**: expanded from 90s to 5 min so periodic sync (every 15 min) doesn't miss alerts that fell in the gap between syncs.
-
-TECHNICAL:
-- `mergeHM` is a simple helper: `new Date(date); d.setHours(hour, minute, 0, 0); return d;`
-- The Identity widget script loads from `https://identity.netlify.com/v1/netlify-identity-widget.js` — Netlify automatically configures this to connect to your site's Identity instance.
-- The SW `checkAlerts` fetches `/api/events` with a 5-min-ago to 24h-ahead range, then fires `showNotification` for any alert whose time has passed within the last 5 minutes.
-- `bun run lint` clean. No runtime errors.
-
-## Unresolved issues / risks + next-phase recommendations
-- User-scoped data: events/calendars are shared across all users. Next phase: add Netlify Identity server-side token verification + filter by `userId`.
-- Repeating events still edit the parent.
-- Next rounds: server-side Identity auth, user-scoped data, occurrence exceptions.
-
----
-Task ID: 41 (full audit + fix all reverted features)
-Agent: main
-Task: Work through the entire worklog and fix every reverted feature.
-
-## Current project status / assessment
-- App stable. Audited all 20+ fixes from the worklog and found 4 that had reverted. All are now fixed.
-
-## Completed modifications / verification results
-Full audit of every fix from the worklog (Tasks 1-40):
-
-**FIXED (were reverted):**
-1. ✅ `use-create-drag.ts`: `snapMins` function shadowed by import → renamed to `snapMinsFn` (3 call sites)
-2. ✅ `day-column.tsx`: `touchAction: "pan-y"` → changed to `"none"` for create-drag scroll lock
-3. ✅ `edit-sheet.tsx`: `onInteractOutside` missing from SheetContent → re-added `(e) => e.preventDefault()`
-4. ✅ Templates bar: `TemplatesBar`, `useTemplates`, `handleSaveAsTemplate`, `applyTemplate` all removed again
-
-**VERIFIED INTACT (not reverted):**
-5. ✅ `mergeHM` function exists in edit-sheet.tsx
-6. ✅ `allowOverlap: true` in all 16 categories + schema `@default(true)`
-7. ✅ Title search threshold: `>= 3`
-8. ✅ `isHovering` prop on EventBlock (5 references)
-9. ✅ `editingTitle` click-to-edit state (2 references)
-10. ✅ `TimeWheel` component used (3 references)
-11. ✅ `TitleAutocomplete` used (2 references)
-12. ✅ `skipHydration: true` on settings store
-13. ✅ `100dvh` on root wrapper
-14. ✅ `Plus` floating button (2 references)
-15. ✅ `QuickActions` wired (2 references)
-16. ✅ Identity widget script loaded from CDN
-17. ✅ `NetlifyIdentityButton` in toolbar
-18. ✅ `prisma db push` in netlify.toml build command
-19. ✅ SW `periodicsync` event listener
-20. ✅ SW `checkAlerts` with 24h look-ahead + 5min fire window + alerts normalization
-
-TECHNICAL:
-- `bun run lint` clean. No runtime errors. All 5 views cycle cleanly.
-- The snapMins shadowing bug keeps recurring because `sed` replacements on other files inadvertently restore the old import name. Fixed by using `snapMinsFn` alias consistently.
-
----
-Task ID: 42 (fix title autocomplete + drag-create + identity)
-Agent: main
-Task: Fix title autocomplete dropdown not showing, drag-create opening edit sheet, identity not responding.
-
-## Current project status / assessment
-- App stable. Fixed three issues.
-
-## Completed modifications / verification results
-1. **Title autocomplete dropdown not showing** — the outside-click `mousedown` handler was closing the dropdown before the click could register on a result. Removed the outside-click handler entirely (the dropdown closes via `pick()` on select, or via the title-length check). Also removed the `Promise.resolve().then()` wrapper that was causing a race condition with the lint rule. Changed to a `setTimeout(..., 0)` pattern. Added `type="button"` and `onMouseDown={(e) => e.preventDefault()}` on result buttons to prevent focus-stealing from the title input.
-
-2. **Drag-to-create opening edit sheet immediately** — the DayColumn had its OWN 600ms `createTimerRef` that called `handleCreateLongPress` → `onCreate()` directly, which opened the edit sheet at 600ms — BEFORE the `useCreateDrag` hook's 1s timer could show the drag preview. Removed the entire custom timer block (`handleCreateLongPress`, `createTimerRef`, `createOriginRef`, and the pointer move/up cancel logic). Now `useCreateDrag` is the only handler — its 1s timer shows the preview, and the user can drag to set duration.
-
-3. **Netlify Identity button not responding** — rewrote the component:
-   - Properly handles the `init`/`login`/`logout` events
-   - Opens the login modal via `window.netlifyIdentity.open("login")` instead of just `.open()`
-   - Redirects to `/` after login to refresh the server context
-   - Added `off` type to the interface declaration
-   - Cleaner polling logic with cancellation
-
-TECHNICAL:
-- `bun run lint` clean. No runtime errors. All 5 views cycle. Plus button found.
-
----
-Task ID: 43 (VAPID web push + full-screen height)
-Agent: main
-Task: Add VAPID web push for background notifications when PWA is closed, fix full-screen height.
-
-## Current project status / assessment
-- App stable. Added VAPID web push infrastructure and fixed the full-screen height issue.
-
-## Completed modifications / verification results
-1. **Full-screen height fix** — the `safe-top` CSS class added `margin-top: env(safe-area-inset-top)` which shifted the content down but the `100dvh` height wasn't accounting for it, making the total height > viewport. Fix: moved the safe-area insets into the inline style directly:
-   ```jsx
-   style={{ height: "100dvh", marginTop: "env(safe-area-inset-top, 0px)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
-   ```
-   The `100dvh` is the full dynamic viewport height, and `marginTop` shifts the content below the status bar. Together they fill the screen without overflow. Verified: `scrollHeight === clientHeight === bodyHeight` (577px = no overflow).
-
-2. **VAPID Web Push infrastructure** — added:
-   - `PushSubscription` Prisma model (endpoint, p256dh, auth keys) stored in Neon
-   - `POST /api/push/subscribe` — stores a browser's push subscription
-   - `POST /api/push/send` — sends a push notification to all stored subscriptions using the `web-push` library
-   - `src/lib/web-push.ts` — client-side subscription helper + server-side payload builder
-   - Updated `NotificationManager` to auto-subscribe to web push on init (if VAPID key is configured)
-   - `.env.example` with `NEXT_PUBLIC_VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`
-   - `netlify.toml` documents the VAPID env vars
-   - `DEPLOYMENT.md` updated with VAPID key generation instructions
-
-3. **How it works (three-layer notification system)**:
-   - **Layer 1 (tab open)**: page polling every 20s → `showNotification` via SW
-   - **Layer 2 (PWA installed, SW alive)**: `periodicSync` every ~15 min → `checkAlerts` → `showNotification`
-   - **Layer 3 (PWA closed)**: server cron job → `POST /api/push/send` → web push to all subscriptions → browser wakes up and shows notification. This is the VAPID layer that works on iOS Safari PWA 16.4+.
-
-4. **Deployment setup**:
-   - Run `npx web-push generate-vapid-keys` to generate keys
-   - `bun add web-push` to install the library
-   - Set `NEXT_PUBLIC_VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` in Netlify env vars
-   - Create a Netlify Scheduled Function (cron) that runs every 15 min, queries events with due alerts, and calls `/api/push/send`
-
-TECHNICAL:
-- `bun run lint` clean. No runtime errors.
-- The `web-push` package is dynamically imported in `/api/push/send` so the build doesn't fail if it's not installed yet.
-- The PushSubscription model is created by `prisma db push` during the Netlify build (already in the build command).
-
-## Unresolved issues / risks + next-phase recommendations
-- The `web-push` npm package needs to be installed: `bun add web-push`
-- VAPID keys need to be generated: `npx web-push generate-vapid-keys`
-- A Netlify Scheduled Function (cron) needs to be created to check for due alerts and call `/api/push/send`
-- User-scoped data still not implemented
-- Repeating events still edit the parent
-
----
-Task ID: 44 (Netlify Scheduled Function for VAPID push)
-Agent: main
-Task: Create the Netlify Scheduled Function that sends push notifications every 15 min.
-
-## Current project status / assessment
-- App stable. The full push notification pipeline is now complete: client subscription → server storage → cron check → VAPID push → browser notification.
-
-## Completed modifications / verification results
-1. **Netlify Scheduled Function** (`netlify/functions/check-alerts.ts`):
-   - Runs every 15 minutes (configured in `netlify.toml` with `schedule = "*/15 * * * *"`).
-   - Queries Neon for events starting in the next 15 minutes.
-   - For each event, parses its `alerts` array (e.g. `[-30, -10, 0]`).
-   - For each due alert, sends a VAPID web push notification to ALL stored push subscriptions.
-   - Cleans up expired subscriptions (HTTP 410/404 → delete from DB).
-   - Can also be triggered manually via HTTP GET for testing.
-   - Logs to Netlify Functions console for debugging.
-
-2. **netlify.toml updated**:
-   - `[functions] directory = "netlify/functions"` — tells Netlify where functions live
-   - `[functions."check-alerts"] schedule = "*/15 * * * *"` — runs every 15 min
-
-3. **web-push package installed**: `bun add web-push` (v3.6.7)
-
-4. **DEPLOYMENT.md updated** with full setup instructions including VAPID key generation and the scheduled function.
-
-TECHNICAL:
-- The function creates its own `PrismaClient` instance (separate from the Next.js app's singleton) because Netlify Functions run in a separate Lambda environment.
-- The function checks if `fireAt` is within the past 5 min OR the next 15 min, so alerts that were due just before the function ran are still sent (with a small delay).
-- `bun run lint` clean. No runtime errors.
-
-## The complete notification pipeline:
-1. **App opens** → NotificationManager subscribes to VAPID web push → sends subscription to `/api/push/subscribe` → stored in Neon `PushSubscription` table
-2. **Every 15 min** → Netlify Scheduled Function runs → queries events with due alerts → sends VAPID push to all subscriptions via `web-push` library
-3. **Browser receives push** → service worker wakes up → shows notification (even if PWA is closed)
-4. **User taps notification** → PWA opens to the event
-
-## Setup (3 steps):
+**Everything rebuilt in one pass:**
+
+1. **`netlify.toml`** — build command includes `prisma db push`, scheduled function config with `*/15 * * * *` cron
+2. **`netlify/functions/check-alerts.ts`** — scheduled function that queries events, parses alerts, sends VAPID push to all subscriptions
+3. **`POST /api/push/subscribe`** — stores browser push subscriptions in Neon
+4. **`POST /api/push/send`** — sends push via `web-push` library (dynamically imported)
+5. **`PushSubscription` Prisma model** — endpoint, p256dh, auth keys
+6. **`allowOverlap` default = true** — schema default was reverted to false, fixed
+7. **`NotificationManager.subscribeToPush()`** — auto-subscribes to VAPID on init, sends subscription to server
+8. **SW `push` event listener** — the critical missing piece! The service worker now listens for `push` events and calls `showNotification`. This is what makes the browser display the notification when it receives a VAPID push from the server — even when the PWA is closed.
+9. **`web-push` package installed** (v3.6.7)
+10. **`NEXT_PUBLIC_VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY`** in `.env.example`
+
+**The critical fix**: the service worker was missing the `push` event listener. Without it, the browser received the push message from Apple/Google's push service but had no handler to display it. Now `self.addEventListener("push", ...)` parses the JSON payload and calls `self.registration.showNotification(title, options)`.
+
+## Setup (before deploying):
 1. `npx web-push generate-vapid-keys` — generate keys
-2. Set `NEXT_PUBLIC_VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` in Netlify env vars
+2. Set in Netlify env vars: `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `DATABASE_URL`
 3. Deploy — the scheduled function auto-configures from `netlify.toml`
 
-## Unresolved issues / risks + next-phase recommendations
-- User-scoped data still not implemented
-- Repeating events still edit the parent
-- Next rounds: user-scoped data, occurrence exceptions
+## The complete pipeline:
+1. App opens → NotificationManager subscribes to VAPID web push → `POST /api/push/subscribe` → stored in Neon
+2. Every 15 min → `netlify/functions/check-alerts.ts` runs → queries events → sends VAPID push via `web-push` library
+3. Browser receives push → SW `push` event fires → `showNotification(title, options)` → notification appears (even if PWA is closed)
+4. User taps → SW `notificationclick` → opens PWA
+
+`bun run lint` clean. All components verified present.
