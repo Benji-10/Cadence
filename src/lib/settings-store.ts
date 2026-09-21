@@ -46,6 +46,27 @@ export const useSettings = create<Settings>()(
       setDefaultEventDurationMins: (v) => set({ defaultEventDurationMins: v }),
       setHourHeight: (v) => set({ hourHeight: v }),
     }),
-    { name: "cadence-settings" }
+    { name: "cadence-settings", skipHydration: true }
   )
 );
+
+// Manually hydrate the store on the client after mount to avoid SSR hydration
+// mismatches. The server uses default values; the client hydrates from
+// localStorage on first render, then this fires to apply persisted values.
+if (typeof window !== "undefined") {
+  import("zustand/middleware").then(({ persist }) => {
+    // Zustand persist stores the state in localStorage under the given name.
+    // We manually rehydrate by reading the stored JSON and merging it.
+    try {
+      const stored = localStorage.getItem("cadence-settings");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && parsed.state) {
+          useSettings.setState(parsed.state);
+        }
+      }
+    } catch {
+      // localStorage not available or invalid JSON — use defaults
+    }
+  });
+}

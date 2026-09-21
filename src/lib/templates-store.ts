@@ -49,6 +49,21 @@ export const useTemplates = create<TemplatesState>()(
           ),
         })),
     }),
-    { name: "cadence-templates" }
+    { name: "cadence-templates", skipHydration: true }
   )
 );
+
+// Manually hydrate on client (same pattern as settings-store).
+if (typeof window !== "undefined") {
+  try {
+    const stored = localStorage.getItem("cadence-templates");
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed && parsed.state) {
+        useTemplates.setState(parsed.state);
+      }
+    }
+  } catch {
+    // use defaults
+  }
+}

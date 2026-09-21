@@ -841,3 +841,32 @@ TECHNICAL:
 - `periodicSync` requires the PWA to be installed and the browser to support it (Chrome/Edge on desktop, Chrome on Android). iOS Safari 16.4+ supports web push but `periodicSync` support may vary.
 - The user needs to run `npx prisma db push` against their Neon database after first deploy to create tables.
 - Next rounds: real-device testing on Netlify deployment, occurrence exceptions.
+
+---
+Task ID: 37 (hydration fix + QA + prisma deploy scripts)
+Agent: main
+Task: Fix React hydration errors #418/#185, restore plus button, add prisma deploy script.
+
+## Current project status / assessment
+- App stable. Fixed hydration errors, restored the floating plus button, added `db:deploy` script.
+
+## Completed modifications / verification results
+1. **Hydration error #418 fix** — the zustand `persist` middleware was reading from localStorage during SSR, causing server/client HTML mismatches. Fix: added `skipHydration: true` to both the `settings-store` and `templates-store`, plus manual hydration on the client side after mount. The server renders with default values; the client hydrates from localStorage asynchronously after first render, avoiding mismatches.
+
+2. **Max update depth #185 fix** — `useSettings()` (without a selector) returned a new object reference on every render, causing unnecessary re-renders. Fix: switched to individual selectors (`useSettings((s) => s.weekStartsOn)`, etc.) so the component only re-renders when the specific setting it uses changes.
+
+3. **Plus button restored** — the floating create button was accidentally lost during the `sed` replacement of `settings.` references. Restored it with the correct `defaultEventDurationMins` variable name and re-added the `Plus` import.
+
+4. **Prisma deploy script** — added `"db:deploy": "prisma db push --accept-data-loss"` to package.json. This can be run against the Neon database after deployment to create/sync the schema: `DATABASE_URL="your-neon-connection-string" bun run db:deploy`
+
+VERIFICATION:
+- App loads without errors ✓
+- More menu opens with all items (Export, Import, Reset, Shortcuts, Install) ✓
+- All 5 views cycle cleanly ✓
+- Plus button found in DOM ✓
+- `bun run lint` clean ✓
+
+## Unresolved issues / risks + next-phase recommendations
+- Needs real iOS device testing after Netlify deployment.
+- Repeating events still edit the parent.
+- Next rounds: real-device testing on Netlify, occurrence exceptions.

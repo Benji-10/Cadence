@@ -15,6 +15,7 @@ import {
   endOfWeek,
 } from "date-fns";
 import { toast } from "sonner";
+import { Plus } from "lucide-react";
 import type { CalendarEvent, ReorderResult } from "@/lib/types";
 import {
   useBootstrap,
@@ -57,8 +58,11 @@ type View = "day" | "week" | "month" | "year" | "agenda";
 
 export function CalendarApp() {
   // Settings (must be before state that depends on it).
-  const settings = useSettings();
-  const weekStartsOn = settings.weekStartsOn;
+  // Use individual selectors to avoid re-rendering on unrelated settings changes.
+  const weekStartsOn = useSettings((s) => s.weekStartsOn);
+  const autoScrollToNow = useSettings((s) => s.autoScrollToNow);
+  const defaultEventDurationMins = useSettings((s) => s.defaultEventDurationMins);
+  const defaultCalendarIdSetting = useSettings((s) => s.defaultCalendarId);
   const undoStack = useUndo();
 
   // View state
@@ -160,15 +164,15 @@ export function CalendarApp() {
     // Prefer the user's configured default (from Settings), if it's still
     // visible; otherwise fall back to the first visible calendar.
     if (
-      settings.defaultCalendarId &&
-      !hiddenCalendarIds.has(settings.defaultCalendarId)
+      defaultCalendarIdSetting &&
+      !hiddenCalendarIds.has(defaultCalendarIdSetting)
     ) {
-      return settings.defaultCalendarId;
+      return defaultCalendarIdSetting;
     }
     return (
       calendars.find((c) => !hiddenCalendarIds.has(c.id))?.id ?? calendars[0]?.id
     );
-  }, [calendars, hiddenCalendarIds, settings.defaultCalendarId]);
+  }, [calendars, hiddenCalendarIds, defaultCalendarIdSetting]);
 
   // ---- Bootstrap on mount ----
   useEffect(() => {
@@ -192,13 +196,13 @@ export function CalendarApp() {
   // Respects the user's "auto-scroll to now" setting.
   useEffect(() => {
     if (view === "month") return;
-    if (!settings.autoScrollToNow) return;
+    if (!autoScrollToNow) return;
     if (!scrollRef.current) return;
     const now = new Date();
     const mins = now.getHours() * 60 + now.getMinutes();
     const top = Math.max(0, (mins / 60) * HOUR_HEIGHT - 120);
     scrollRef.current.scrollTop = top;
-  }, [view, weekStart, monthDate, settings.autoScrollToNow]);
+  }, [view, weekStart, monthDate, autoScrollToNow]);
 
   // ---- Notifications wiring ----
   useEffect(() => {
@@ -599,7 +603,7 @@ export function CalendarApp() {
       start.setHours(now.getHours() + 1, 0, 0, 0);
     }
     const end = new Date(
-      start.getTime() + settings.defaultEventDurationMins * 60_000
+      start.getTime() + defaultEventDurationMins * 60_000
     );
     setEditState({
       mode: "create",
@@ -610,7 +614,7 @@ export function CalendarApp() {
       },
     });
     setEditOpen(true);
-  }, [view, selectedDay, defaultCalendarId, settings.defaultEventDurationMins]);
+  }, [view, selectedDay, defaultCalendarId, defaultEventDurationMins]);
 
   // ---- Sticky footer: next event ----
   const nextEvent = useMemo(() => {
@@ -816,6 +820,38 @@ export function CalendarApp() {
             </span>
           </div>
         </footer>
+
+        {/* Floating create button */}
+        <button
+          onClick={() => {
+            const now = new Date();
+            const start = view === "month" || view === "year"
+              ? new Date(selectedDay)
+              : new Date(now);
+            if (view === "month" || view === "year") {
+              start.setHours(now.getHours() + 1, 0, 0, 0);
+            } else {
+              start.setMinutes(0, 0, 0);
+              start.setHours(start.getHours() + 1);
+            }
+            const dur = defaultEventDurationMins ?? 60;
+            const end = new Date(start.getTime() + dur * 60_000);
+            setEditState({
+              mode: "create",
+              defaults: {
+                start: start.toISOString(),
+                end: end.toISOString(),
+                calendarId: defaultCalendarId,
+              },
+            });
+            setEditOpen(true);
+          }}
+          className="fixed bottom-20 right-4 z-40 flex size-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg transition-transform hover:scale-105 active:scale-95 sm:bottom-16"
+          aria-label="Create event at current time"
+          style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}
+        >
+          <Plus className="size-6" />
+        </button>
 
         {/* Edit sheet */}
         <EditSheet
