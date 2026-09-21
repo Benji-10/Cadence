@@ -932,3 +932,75 @@ TECHNICAL:
 - Events/calendars are not yet scoped by user — all users see the same data. Next phase: filter by `userId`.
 - Repeating events still edit the parent.
 - Next rounds: user-scoped data, occurrence exceptions.
+
+---
+Task ID: 40 (fix reverted features: mergeHM, allowOverlap, title search, identity, SW alerts)
+Agent: main
+Task: Fix all reverted features from production deployment.
+
+## Current project status / assessment
+- App stable. Fixed five reverted features and added the Identity widget script.
+
+## Completed modifications / verification results
+1. **mergeHM function restored** — the `mergeHM(date, hour, minute)` helper was missing from `edit-sheet.tsx` (lost during prior edits). The TimeWheel's `onChange` callback references `mergeHM` but it didn't exist, so changing the time had no effect. Re-added the function.
+
+2. **allowOverlap = true (all categories)** — the `sed` replacement that set all `allowOverlap: false` to `true` had been reverted. Re-ran the replacement: all 16 category rules now have `allowOverlap: true`. Schema default is already `@default(true)`.
+
+3. **Title search threshold** — the condition was `title.trim().length >= 2` (should be `>= 3` per user request). Fixed.
+
+4. **Netlify Identity widget script** — the `<script>` tag in `layout.tsx` only ran a handler if `window.netlifyIdentity` existed, but never loaded the actual widget. Added `<script src="https://identity.netlify.com/v1/netlify-identity-widget.js" async />` to load the Identity widget from Netlify's CDN. On Netlify, this connects to your Identity instance. On localhost/sandbox, it loads but can't connect (no-op).
+
+5. **Background notifications (SW checkAlerts)** — three fixes:
+   - **Alerts parsing**: the SW's `checkAlerts` now handles `alerts` being either a JSON string or an array (normalizes with `JSON.parse` if string).
+   - **Look-ahead window**: expanded from 2h to 24h so periodic sync catches alerts further out.
+   - **Fire window**: expanded from 90s to 5 min so periodic sync (every 15 min) doesn't miss alerts that fell in the gap between syncs.
+
+TECHNICAL:
+- `mergeHM` is a simple helper: `new Date(date); d.setHours(hour, minute, 0, 0); return d;`
+- The Identity widget script loads from `https://identity.netlify.com/v1/netlify-identity-widget.js` — Netlify automatically configures this to connect to your site's Identity instance.
+- The SW `checkAlerts` fetches `/api/events` with a 5-min-ago to 24h-ahead range, then fires `showNotification` for any alert whose time has passed within the last 5 minutes.
+- `bun run lint` clean. No runtime errors.
+
+## Unresolved issues / risks + next-phase recommendations
+- User-scoped data: events/calendars are shared across all users. Next phase: add Netlify Identity server-side token verification + filter by `userId`.
+- Repeating events still edit the parent.
+- Next rounds: server-side Identity auth, user-scoped data, occurrence exceptions.
+
+---
+Task ID: 41 (full audit + fix all reverted features)
+Agent: main
+Task: Work through the entire worklog and fix every reverted feature.
+
+## Current project status / assessment
+- App stable. Audited all 20+ fixes from the worklog and found 4 that had reverted. All are now fixed.
+
+## Completed modifications / verification results
+Full audit of every fix from the worklog (Tasks 1-40):
+
+**FIXED (were reverted):**
+1. ✅ `use-create-drag.ts`: `snapMins` function shadowed by import → renamed to `snapMinsFn` (3 call sites)
+2. ✅ `day-column.tsx`: `touchAction: "pan-y"` → changed to `"none"` for create-drag scroll lock
+3. ✅ `edit-sheet.tsx`: `onInteractOutside` missing from SheetContent → re-added `(e) => e.preventDefault()`
+4. ✅ Templates bar: `TemplatesBar`, `useTemplates`, `handleSaveAsTemplate`, `applyTemplate` all removed again
+
+**VERIFIED INTACT (not reverted):**
+5. ✅ `mergeHM` function exists in edit-sheet.tsx
+6. ✅ `allowOverlap: true` in all 16 categories + schema `@default(true)`
+7. ✅ Title search threshold: `>= 3`
+8. ✅ `isHovering` prop on EventBlock (5 references)
+9. ✅ `editingTitle` click-to-edit state (2 references)
+10. ✅ `TimeWheel` component used (3 references)
+11. ✅ `TitleAutocomplete` used (2 references)
+12. ✅ `skipHydration: true` on settings store
+13. ✅ `100dvh` on root wrapper
+14. ✅ `Plus` floating button (2 references)
+15. ✅ `QuickActions` wired (2 references)
+16. ✅ Identity widget script loaded from CDN
+17. ✅ `NetlifyIdentityButton` in toolbar
+18. ✅ `prisma db push` in netlify.toml build command
+19. ✅ SW `periodicsync` event listener
+20. ✅ SW `checkAlerts` with 24h look-ahead + 5min fire window + alerts normalization
+
+TECHNICAL:
+- `bun run lint` clean. No runtime errors. All 5 views cycle cleanly.
+- The snapMins shadowing bug keeps recurring because `sed` replacements on other files inadvertently restore the old import name. Fixed by using `snapMinsFn` alias consistently.

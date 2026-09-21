@@ -39,7 +39,7 @@ const RULES: Rule[] = [
       flexibility: "fixed",
       locationType: "campus",
       minChunkMins: 50,
-      allowOverlap: false,
+      allowOverlap: true,
       calendarKind: "study",
       color: "#F59E0B", // amber
     },
@@ -51,7 +51,7 @@ const RULES: Rule[] = [
       flexibility: "fixed",
       locationType: "sports",
       minChunkMins: 60,
-      allowOverlap: false,
+      allowOverlap: true,
       calendarKind: "sport",
       color: "#10B981", // emerald
     },
@@ -63,7 +63,7 @@ const RULES: Rule[] = [
       flexibility: "fixed",
       locationType: "home",
       minChunkMins: 480,
-      allowOverlap: false,
+      allowOverlap: true,
       calendarKind: "personal",
       color: "#6366F1", // indigo (sleep is the one allowed indigo)
     },
@@ -75,7 +75,7 @@ const RULES: Rule[] = [
       flexibility: "fixed",
       locationType: "any",
       minChunkMins: 20,
-      allowOverlap: false,
+      allowOverlap: true,
       calendarKind: "personal",
       color: "#9CA3AF", // gray
     },
@@ -99,7 +99,7 @@ const RULES: Rule[] = [
       flexibility: "movable",
       locationType: "out",
       minChunkMins: 90,
-      allowOverlap: false,
+      allowOverlap: true,
       calendarKind: "home",
       color: "#0EA5E9", // sky
     },
@@ -111,7 +111,7 @@ const RULES: Rule[] = [
       flexibility: "movable",
       locationType: "home",
       minChunkMins: 60,
-      allowOverlap: false,
+      allowOverlap: true,
       calendarKind: "home",
       color: "#F97316", // orange
     },
@@ -123,7 +123,7 @@ const RULES: Rule[] = [
       flexibility: "flexible",
       locationType: "any",
       minChunkMins: 60,
-      allowOverlap: false,
+      allowOverlap: true,
       calendarKind: "work",
       color: "#EF4444", // red
     },
@@ -135,7 +135,7 @@ const RULES: Rule[] = [
       flexibility: "flexible",
       locationType: "any",
       minChunkMins: 45,
-      allowOverlap: false,
+      allowOverlap: true,
       calendarKind: "study",
       color: "#8B5CF6", // violet
     },
@@ -147,7 +147,7 @@ const RULES: Rule[] = [
       flexibility: "flexible",
       locationType: "any",
       minChunkMins: 30,
-      allowOverlap: false,
+      allowOverlap: true,
       calendarKind: "study",
       color: "#EC4899", // pink
     },
@@ -159,7 +159,7 @@ const RULES: Rule[] = [
       flexibility: "flexible",
       locationType: "home",
       minChunkMins: 60,
-      allowOverlap: false,
+      allowOverlap: true,
       calendarKind: "work",
       color: "#14B8A6", // teal
     },
@@ -171,7 +171,7 @@ const RULES: Rule[] = [
       flexibility: "flexible",
       locationType: "home",
       minChunkMins: 45,
-      allowOverlap: false,
+      allowOverlap: true,
       calendarKind: "study",
       color: "#3B82F6", // blue (only allowed blue — aviation/navy)
     },
@@ -183,7 +183,7 @@ const RULES: Rule[] = [
       flexibility: "flexible",
       locationType: "home",
       minChunkMins: 30,
-      allowOverlap: false,
+      allowOverlap: true,
       calendarKind: "personal",
       color: "#A855F7", // purple
     },
@@ -195,7 +195,7 @@ const RULES: Rule[] = [
       flexibility: "movable",
       locationType: "out",
       minChunkMins: 90,
-      allowOverlap: false,
+      allowOverlap: true,
       calendarKind: "social",
       color: "#22C55E", // green
     },
@@ -207,7 +207,7 @@ const RULES: Rule[] = [
       flexibility: "flexible",
       locationType: "any",
       minChunkMins: 20,
-      allowOverlap: false,
+      allowOverlap: true,
       calendarKind: "personal",
       color: "#D1D5DB", // light gray
     },
@@ -219,7 +219,7 @@ const DEFAULT_META: InferredMeta = {
   flexibility: "movable",
   locationType: "any",
   minChunkMins: 30,
-  allowOverlap: false,
+  allowOverlap: true,
   calendarKind: "personal",
   color: "#64748B", // slate
 };

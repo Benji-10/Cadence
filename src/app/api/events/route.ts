@@ -8,6 +8,10 @@ import type { CalendarEvent } from "@/lib/types";
 export async function GET(req: NextRequest) {
   const from = req.nextUrl.searchParams.get("from");
   const to = req.nextUrl.searchParams.get("to");
+
+  // Get user ID from Netlify Identity (via the netlify function context).
+  // For now, we don't gate — all events are shared. Once Identity is wired
+  // server-side, filter by userId.
   const where: { start?: { gte: Date }; end?: { lte: Date } } = {};
   if (from) where.start = { gte: new Date(from) };
   if (to) where.end = { lte: new Date(to) };

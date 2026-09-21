@@ -94,8 +94,9 @@ self.addEventListener("sync", (event) => {
 async function checkAlerts() {
   try {
     const now = Date.now();
-    const from = new Date(now).toISOString();
-    const to = new Date(now + 2 * 60 * 60 * 1000).toISOString();
+    // Look ahead 24h so alerts that are coming up soon are caught by periodic sync.
+    const from = new Date(now - 5 * 60 * 1000).toISOString(); // 5 min ago
+    const to = new Date(now + 24 * 60 * 60 * 1000).toISOString(); // 24h ahead
 
     const res = await fetch(`${API_BASE}/api/events?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
     if (!res.ok) return;
@@ -108,14 +109,19 @@ async function checkAlerts() {
 
     for (const ev of events) {
       const startMs = new Date(ev.start).getTime();
-      const alerts = ev.alerts || [];
+      // alerts may be a JSON string or an array — normalize.
+      let alerts = ev.alerts;
+      if (typeof alerts === "string") {
+        try { alerts = JSON.parse(alerts); } catch { alerts = []; }
+      }
+      if (!Array.isArray(alerts)) alerts = [];
 
       for (const offset of alerts) {
         const fireAt = startMs + offset * 60 * 1000;
         const key = `${ev.id}|${offset}|${fireAt}`;
 
-        // Fire if the alert time has passed (within last 90s) and we haven't fired it yet
-        if (fireAt <= now && now - fireAt < 90_000 && !self._firedAlerts.has(key)) {
+        // Fire if the alert time has passed (within last 5 min for periodic sync)
+        if (fireAt <= now && now - fireAt < 5 * 60 * 1000 && !self._firedAlerts.has(key)) {
           self._firedAlerts.add(key);
 
           const when = offset === 0 ? "starts now" : `starts in ${Math.abs(offset)} min`;

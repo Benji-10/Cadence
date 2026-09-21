@@ -163,7 +163,7 @@ export function DayColumn({
       )}
       style={{
         height: 24 * HH,
-        touchAction: "pan-y",
+        touchAction: "none",
         WebkitUserSelect: "none",
         userSelect: "none",
       }}
