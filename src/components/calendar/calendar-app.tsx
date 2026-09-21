@@ -671,7 +671,7 @@ export function CalendarApp() {
 
   return (
     <CalendarVisibilityContext.Provider value={visibilityCtx}>
-      <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground safe-top safe-bottom">
+      <div className="flex flex-col overflow-hidden bg-background text-foreground safe-top safe-bottom" style={{ height: "100dvh" }}>
         <Toolbar
           visibleDate={visibleDate}
           view={view}
@@ -774,7 +774,7 @@ export function CalendarApp() {
 
         {/* Sticky footer */}
         <footer
-          className="glass mt-auto flex h-10 items-center justify-between gap-3 border-t border-border bg-background/90 px-3 text-xs text-muted-foreground sm:px-4"
+          className="mt-auto flex h-10 items-center justify-between gap-3 border-t border-border bg-background px-3 text-xs text-muted-foreground sm:px-4"
           role="contentinfo"
         >
           <div className="flex min-w-0 items-center gap-2">

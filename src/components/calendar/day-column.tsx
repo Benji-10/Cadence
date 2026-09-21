@@ -3,7 +3,7 @@
 import { useMemo, useRef, useEffect } from "react";
 import { isSameDay, parseISO, format } from "date-fns";
 import type { Calendar, CalendarEvent } from "@/lib/types";
-import { HOUR_HEIGHT, layoutEvents, snapMins, conflictingEventIds } from "@/lib/calendar-ui";
+import { HOUR_HEIGHT, layoutEvents, snapMins as snapMinsFn, conflictingEventIds } from "@/lib/calendar-ui";
 import { EventBlock } from "./event-block";
 import { NowLine } from "./now-line";
 import { useEventDrag } from "@/hooks/use-event-drag";
@@ -118,7 +118,7 @@ export function DayColumn({
     const rect = columnRef.current?.getBoundingClientRect();
     if (!rect) return;
     const y = clientY - rect.top;
-    const mins = Math.max(0, Math.min(23 * 60 + 45, snapMins((y / HH) * 60)));
+    const mins = Math.max(0, Math.min(23 * 60 + 45, snapMinsFn((y / HH) * 60, snapMins)));
     const start = new Date(day);
     start.setHours(0, 0, 0, 0);
     start.setMinutes(mins);
@@ -138,7 +138,7 @@ export function DayColumn({
     if (!onCreate) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const y = e.clientY - rect.top;
-    const mins = Math.max(0, Math.min(23 * 60 + 45, snapMins((y / HH) * 60)));
+    const mins = Math.max(0, Math.min(23 * 60 + 45, snapMinsFn((y / HH) * 60, snapMins)));
     const start = new Date(day);
     start.setHours(0, 0, 0, 0);
     start.setMinutes(mins);

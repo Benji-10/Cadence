@@ -897,3 +897,38 @@ TECHNICAL:
 - This should resolve the "table does not exist" error on Netlify. The user needs to redeploy after this change.
 - Repeating events still edit the parent.
 - Next rounds: real-device testing on Netlify, occurrence exceptions.
+
+---
+Task ID: 39 (fix degraded features: drag crash, layout overflow, identity)
+Agent: main
+Task: Fix snapMins crash, layout overflow/status bar blur, add Netlify Identity login.
+
+## Current project status / assessment
+- App stable. Fixed three issues from production deployment.
+
+## Completed modifications / verification results
+1. **Drag-create crash ("b is not a function")** — the `snapMins` function import was shadowed by `const snapMins` (the settings number) AGAIN. The previous fix was lost during the zustand selector refactoring. Fixed by renaming the import to `snapMinsFn` and passing the settings value as the second argument: `snapMinsFn((y / HH) * 60, snapMins)`.
+
+2. **Layout overflow + status bar blur**:
+   - Changed `h-screen` to `height: 100dvh` (dynamic viewport height — accounts for iOS Safari's dynamic toolbars).
+   - Removed `glass` class (backdrop-filter blur) from the toolbar and footer. The blur was causing the status bar area to appear blurred on iOS PWA. Replaced with solid `bg-background`.
+   - VERIFIED: mobile `scrollHeight === clientHeight` (no overflow), footer visible.
+
+3. **Netlify Identity login button** — added `NetlifyIdentityButton` component that:
+   - Waits for `window.netlifyIdentity` to load (polls every 500ms)
+   - Shows "Log in" button when not authenticated
+   - Shows account dropdown (email + Log out) when authenticated
+   - Placed in the toolbar between Theme toggle and More menu
+   - On Netlify, the Identity widget script in `layout.tsx` provides `window.netlifyIdentity`
+   - In sandbox (no Identity), the component returns `null` (invisible)
+
+TECHNICAL:
+- `100dvh` is the modern CSS unit that adjusts to iOS Safari's dynamic viewport (when the toolbar shows/hides, the viewport height changes). `100vh` doesn't account for this, causing overflow.
+- `backdrop-filter: blur(20px)` on the toolbar caused the content behind it (including the status bar area on iOS PWA) to appear blurred. Replaced with solid `bg-background`.
+- `bun run lint` clean. No runtime errors. All 5 views cycle cleanly.
+
+## Unresolved issues / risks + next-phase recommendations
+- The Identity button only shows on Netlify (where `window.netlifyIdentity` exists). In sandbox it's invisible.
+- Events/calendars are not yet scoped by user — all users see the same data. Next phase: filter by `userId`.
+- Repeating events still edit the parent.
+- Next rounds: user-scoped data, occurrence exceptions.
