@@ -20,6 +20,13 @@
 //      Before-alerts may fire up to 16m early (better early than after).
 //
 // No increase in cron frequency is needed — the look-back absorbs the jitter.
+//
+// ── Logging ──────────────────────────────────────────────────────────
+// Every step is logged with console.log/error so the Netlify function logs
+// show exactly what happened: which events were queried, which alerts were
+// due, how many subscriptions exist, and the FULL error details (statusCode,
+// body, headers) for any push send that failed. This is essential for
+// diagnosing push delivery issues on mobile.
 
 import { PrismaClient, type Event, type PushSubscription } from "@prisma/client";
 
@@ -82,10 +89,17 @@ export function shouldFireAlert(offset: number, fireAtMs: number, nowMs: number)
       && fireAtMs >= nowMs - ALERT_TIMING.STALE_CUTOFF_MIN * 60_000;
 }
 
+function safeHost(endpoint: string): string {
+  try { return new URL(endpoint).hostname; } catch { return "unknown"; }
+}
+
 export async function runAlertCheck(opts: RunOptions): Promise<AlertCheckResult> {
   const { db, dryRun = false } = opts;
   const now = opts.nowMs ?? Date.now();
   const startTime = Date.now();
+
+  console.log("🔄 ===== Alert check started =====");
+  console.log(`🕒 Time: ${new Date(now).toISOString()}${dryRun ? " (DRY RUN)" : ""}`);
 
   // --- Prune old SentAlert rows -----------------------------------------
   let pruned = 0;
@@ -94,34 +108,55 @@ export async function runAlertCheck(opts: RunOptions): Promise<AlertCheckResult>
     try {
       const res = await db.sentAlert.deleteMany({ where: { sentAt: { lt: ttlCutoff } } });
       pruned = res.count;
-    } catch {
-      // non-fatal
+      if (pruned > 0) console.log(`🧹 Pruned ${pruned} SentAlert rows older than ${ALERT_TIMING.SENT_TTL_DAYS} days`);
+    } catch (e) {
+      console.warn("⚠️ Failed to prune SentAlert (non-fatal):", String(e));
     }
   }
 
   // --- Query events in the widened window -------------------------------
   const from = new Date(now - ALERT_TIMING.LOOK_BACK_MIN * 60_000);
   const to = new Date(now + ALERT_TIMING.LOOK_AHEAD_MIN * 60_000);
+  console.log(`📅 Querying events with start ∈ [${from.toISOString()}, ${to.toISOString()}] (look-back ${ALERT_TIMING.LOOK_BACK_MIN}m, look-ahead ${ALERT_TIMING.LOOK_AHEAD_MIN}m)`);
 
   const events = await db.event.findMany({
     where: { start: { gte: from, lte: to } },
   });
+
+  console.log(`📅 Found ${events.length} events in the window`);
+  if (events.length > 0) {
+    for (const ev of events) {
+      let alerts: number[] = [];
+      try { alerts = JSON.parse(ev.alerts || "[]"); } catch { alerts = []; }
+      console.log(`   • "${ev.title}" at ${new Date(ev.start).toISOString()} — alerts: [${alerts.join(", ")}] — location: ${ev.location || "none"}`);
+    }
+  }
 
   // --- Collect pending alerts -------------------------------------------
   const pending: DueAlert[] = [];
   for (const ev of events) {
     let alerts: number[] = [];
     try { alerts = JSON.parse(ev.alerts || "[]"); } catch { alerts = []; }
-    if (alerts.length === 0) continue;
+    if (alerts.length === 0) {
+      console.log(`⏭️ "${ev.title}" has no alerts configured — skipping`);
+      continue;
+    }
 
     const startMs = new Date(ev.start).getTime();
     for (const offset of alerts) {
       const fireAtMs = startMs + offset * 60_000;
-      if (!shouldFireAlert(offset, fireAtMs, now)) continue;
+      const fireAt = new Date(fireAtMs);
+      const delta = Math.round((fireAtMs - now) / 1000);
+
+      if (!shouldFireAlert(offset, fireAtMs, now)) {
+        console.log(`⏭️ Alert ${ev.id}/${offset} not due (fireAt ${fireAt.toISOString()}, Δ${delta}s)`);
+        continue;
+      }
+      console.log(`🔔 Alert DUE: "${ev.title}" offset=${offset} fireAt=${fireAt.toISOString()} (Δ${delta}s)`);
       pending.push({
         eventId: ev.id,
         offset,
-        fireAt: new Date(fireAtMs),
+        fireAt,
         title: `${ev.title} ${offset === 0 ? "starts now" : `starts in ${Math.abs(offset)} min`}`,
         body: [
           ev.location ? `📍 ${ev.location}` : null,
@@ -132,8 +167,11 @@ export async function runAlertCheck(opts: RunOptions): Promise<AlertCheckResult>
     }
   }
 
+  console.log(`🔔 ${pending.length} alert(s) are due this run`);
+
   // --- Dry run? Return the preview without side effects ----------------
   if (dryRun) {
+    console.log(`ℹ️ Dry run — skipping push send + SentAlert write`);
     await db.$disconnect();
     return {
       eventsQueried: events.length,
@@ -151,7 +189,25 @@ export async function runAlertCheck(opts: RunOptions): Promise<AlertCheckResult>
 
   // --- Fetch push subscriptions -----------------------------------------
   const subs: PushSubscription[] = await db.pushSubscription.findMany();
+  console.log(`📱 Found ${subs.length} push subscriptions`);
+  if (subs.length > 0) {
+    for (const sub of subs) {
+      const host = safeHost(sub.endpoint);
+      console.log(`   • ${host} (endpoint: ${sub.endpoint.substring(0, 60)}...)`);
+      console.log(`     p256dh: ${sub.p256dh ? sub.p256dh.substring(0, 20) + "..." : "(missing)"} (len=${sub.p256dh?.length || 0})`);
+      console.log(`     auth:   ${sub.auth ? sub.auth.substring(0, 20) + "..." : "(missing)"} (len=${sub.auth?.length || 0})`);
+    }
+  }
+
+  if (subs.length === 0) {
+    console.log("⚠️ No push subscriptions — users need to open the PWA and enable notifications to subscribe");
+  }
+  if (pending.length === 0) {
+    console.log("ℹ️ No alerts due");
+  }
   if (subs.length === 0 || pending.length === 0) {
+    const elapsedMs = Date.now() - startTime;
+    console.log(`✅ ===== Alert check complete (nothing to send) — ${elapsedMs}ms =====`);
     await db.$disconnect();
     return {
       eventsQueried: events.length,
@@ -161,7 +217,7 @@ export async function runAlertCheck(opts: RunOptions): Promise<AlertCheckResult>
       failed: 0,
       skippedDup: 0,
       pruned,
-      elapsedMs: Date.now() - startTime,
+      elapsedMs,
       timestamp: new Date().toISOString(),
     };
   }
@@ -182,6 +238,7 @@ export async function runAlertCheck(opts: RunOptions): Promise<AlertCheckResult>
     for (const r of existing) {
       alreadySent.add(`${r.eventId}|${r.offset}|${r.fireAt.getTime()}`);
     }
+    console.log(`📋 ${existing.length} of ${pending.length} due alert(s) already sent (dedup)`);
   }
 
   // --- Dynamically import web-push (server-only) -----------------------
@@ -190,8 +247,13 @@ export async function runAlertCheck(opts: RunOptions): Promise<AlertCheckResult>
   const webPush = (await import("web-push")).default;
   const vapidPublic = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
   const vapidPrivate = process.env.VAPID_PRIVATE_KEY || "";
+  console.log(`🔑 VAPID public key configured: ${!!vapidPublic}${vapidPublic ? ` (${vapidPublic.substring(0, 20)}...)` : ""}`);
+  console.log(`🔑 VAPID private key configured: ${!!vapidPrivate}`);
   if (vapidPublic && vapidPrivate) {
     webPush.setVapidDetails("mailto:notifications@cadence.app", vapidPublic, vapidPrivate);
+    console.log(`✅ web-push configured with VAPID`);
+  } else {
+    console.error("❌ VAPID keys not configured — push will fail. Set NEXT_PUBLIC_VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in env vars.");
   }
 
   let sent = 0;
@@ -202,6 +264,7 @@ export async function runAlertCheck(opts: RunOptions): Promise<AlertCheckResult>
     const dedupKey = `${p.eventId}|${p.offset}|${p.fireAt.getTime()}`;
     if (alreadySent.has(dedupKey)) {
       skippedDup++;
+      console.log(`🔀 Already sent ${dedupKey} — skipping`);
       continue;
     }
 
@@ -214,16 +277,42 @@ export async function runAlertCheck(opts: RunOptions): Promise<AlertCheckResult>
       data: { url: "/", eventId: p.eventId },
     });
 
+    console.log(`🔔 Firing alert: "${p.title}" (key: ${dedupKey})`);
+    console.log(`   📨 Body: ${p.body}`);
+    console.log(`   📦 Payload: ${payload.substring(0, 200)}${payload.length > 200 ? "..." : ""}`);
+
     let anySent = false;
     for (const sub of subs) {
+      const host = safeHost(sub.endpoint);
       try {
-        await webPush.sendNotification(
+        console.log(`   → Sending to ${host}...`);
+        const result = await webPush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
           payload
         );
+        console.log(`   ✅ Sent to ${host} (status: ${result.statusCode})`);
         anySent = true;
       } catch (e: any) {
+        // Log the FULL error so we can diagnose push failures.
+        // Common failures:
+        //   404/410 → subscription expired/unsubscribed → delete it
+        //   400     → bad VAPID key or malformed subscription
+        //   403     → wrong VAPID subject (mailto:) or key mismatch
+        //   429     → rate limited by push service
+        //   5xx     → push service internal error
+        console.error(`   ❌ Failed to send to ${host}:`);
+        console.error(`      statusCode: ${e.statusCode}`);
+        console.error(`      message:    ${e.message || "(none)"}`);
+        if (e.body) {
+          const bodyStr = typeof e.body === "string" ? e.body : JSON.stringify(e.body);
+          console.error(`      body:       ${bodyStr.substring(0, 300)}`);
+        }
+        if (e.headers) {
+          console.error(`      headers:    content-type=${e.headers["content-type"] || "?"}, www-authenticate=${e.headers["www-authenticate"] || "(none)"}`);
+        }
+
         if (e.statusCode === 410 || e.statusCode === 404) {
+          console.log(`   🗑️ Deleting expired subscription: ${host}`);
           await db.pushSubscription.delete({ where: { endpoint: sub.endpoint } }).catch(() => {});
         }
         failed++;
@@ -236,14 +325,21 @@ export async function runAlertCheck(opts: RunOptions): Promise<AlertCheckResult>
         await db.sentAlert.create({
           data: { eventId: p.eventId, offset: p.offset, fireAt: p.fireAt },
         });
+        console.log(`   📝 Recorded SentAlert ${dedupKey}`);
       } catch (e: any) {
         // P2002 = unique constraint violation (concurrent run already recorded)
         if (e?.code !== "P2002") {
-          // non-fatal
+          console.warn(`   ⚠️ Couldn't record SentAlert (non-fatal): ${String(e)}`);
         }
       }
+    } else {
+      console.log(`   ⚠️ No subscriptions received this alert — not recording SentAlert`);
     }
   }
+
+  const elapsedMs = Date.now() - startTime;
+  console.log(`✅ ===== Alert check complete =====`);
+  console.log(`   Sent: ${sent} | Failed: ${failed} | Skipped (dup): ${skippedDup} | Time: ${elapsedMs}ms`);
 
   await db.$disconnect();
   return {
@@ -254,7 +350,7 @@ export async function runAlertCheck(opts: RunOptions): Promise<AlertCheckResult>
     failed,
     skippedDup,
     pruned,
-    elapsedMs: Date.now() - startTime,
+    elapsedMs,
     timestamp: new Date().toISOString(),
   };
 }
