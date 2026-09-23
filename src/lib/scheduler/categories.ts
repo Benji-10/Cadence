@@ -33,18 +33,7 @@ interface Rule {
 // Ordered — first match wins, so put more specific rules first.
 const RULES: Rule[] = [
   {
-    keywords: ["computer organization", "computer graphics", "programming languages", "machine learning", "lecture", "class", "tutorial", "seminar", "lab"],
-    meta: {
-      category: "lecture",
-      flexibility: "fixed",
-      locationType: "campus",
-      minChunkMins: 50,
-      allowOverlap: false,
-      calendarKind: "study",
-      color: "#F59E0B", // amber
-    },
-  },
-  {
+    // KINE 199 Badminton is a sport class, even though it has a course code.
     keywords: ["volleyball", "badminton", "sport", "gym", "football", "basketball", "swim", "swimming", "training", "match", "practice"],
     meta: {
       category: "sport",
@@ -54,6 +43,18 @@ const RULES: Rule[] = [
       allowOverlap: false,
       calendarKind: "sport",
       color: "#10B981", // emerald
+    },
+  },
+  {
+    keywords: ["csce", "computer organization", "computer graphics", "programming languages", "machine learning", "lecture", "class", "tutorial", "seminar", "lab"],
+    meta: {
+      category: "lecture",
+      flexibility: "fixed",
+      locationType: "campus",
+      minChunkMins: 50,
+      allowOverlap: false,
+      calendarKind: "study",
+      color: "#F59E0B", // amber
     },
   },
   {

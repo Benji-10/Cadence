@@ -1,255 +1,194 @@
-// The user's two-week starter schedule, encoded as relative day offsets so the
-// calendar always shows "this week and next week" from whenever it's seeded.
+// The user's real university schedule, encoded as weekly-recurring courses plus
+// a few one-off life blocks. All times are LOCAL (not UTC) — "08:00" means
+// 08:00 in whatever timezone the browser is in.
 //
-// Each entry is { day: 0..13 (Mon of week 1 = 0), startMins, endMins, title }.
-// startMins/endMins are minutes since local midnight. Times that cross
-// midnight (e.g. 22:50→06:50 sleep) are encoded with the END on the following
-// day using a `dayOffset` of +1.
+// Each course is a single recurring event with `daysOfWeek` so the calendar
+// shows every session (Mon, Wed, Fri, …) without duplicating rows in the DB.
+// The recurrence expander in `recurrence.ts` materialises the occurrences.
+//
+// Room numbers live in `notes` because OpenStreetMap (used by the location
+// autocomplete) doesn't index room numbers — only building addresses. The
+// `location` field gets the searchable building address; `notes` gets the
+// room, which is what you actually need once you're inside the building.
 
 import { inferMetaFromTitle } from "./categories";
+import type { RecurrenceRule } from "../types";
 
 export interface SeedEntry {
-  day: number; // 0 = Monday week 1 ... 6 = Sunday week 1, 7..13 = week 2
+  /** 0 = Monday of week 1 … 6 = Sunday of week 1, 7..13 = week 2.
+   *  For recurring entries this is the day of the FIRST occurrence. */
+  day: number;
+  /** minutes since local midnight */
   startMins: number;
   endMins: number;
   endDayOffset?: 0 | 1; // for overnight events
   title: string;
   location?: string;
+  notes?: string;
+  /** When set, this entry recurs weekly on the given days-of-week
+   *  (0=Sun … 6=Sat) until `recurrenceUntil`. */
+  daysOfWeek?: number[];
+  recurrenceUntil?: string; // ISO date — end of semester
+  alerts?: number[]; // override default [-30, -10, 0]
 }
 
-// Helper to build a slot quickly.
 const slot = (
   day: number,
   start: string,
   end: string,
   title: string,
-  location?: string
+  opts: { location?: string; notes?: string; daysOfWeek?: number[]; recurrenceUntil?: string; alerts?: number[] } = {}
 ): SeedEntry => {
   const [sh, sm] = start.split(":").map(Number);
   const [eh, em] = end.split(":").map(Number);
+  const startMins = sh * 60 + sm;
+  const endMins = eh * 60 + em;
   return {
     day,
-    startMins: sh * 60 + sm,
-    endMins: eh * 60 + em,
-    endDayOffset: eh * 60 + em <= sh * 60 + sm ? 1 : 0,
+    startMins,
+    endMins,
+    endDayOffset: endMins <= startMins ? 1 : 0,
     title,
-    location,
+    location: opts.location,
+    notes: opts.notes,
+    daysOfWeek: opts.daysOfWeek,
+    recurrenceUntil: opts.recurrenceUntil,
+    alerts: opts.alerts,
   };
 };
 
-// ---- WEEK 1 --------------------------------------------------------------
-const WEEK1: SeedEntry[] = [
-  // MONDAY
-  slot(0, "07:00", "08:00", "Get ready + travel", "Home → Campus"),
-  slot(0, "08:00", "08:50", "Computer Organization", "Campus"),
-  slot(0, "08:50", "10:50", "Paid work", "Campus"),
-  slot(0, "10:50", "11:20", "Homework", "Campus"),
-  slot(0, "11:30", "12:20", "Computer Organization", "Campus"),
-  slot(0, "12:20", "13:20", "Homework / assignment", "Campus"),
-  slot(0, "13:50", "14:40", "Programming Languages", "Campus"),
-  slot(0, "14:40", "15:40", "Paid work", "Campus"),
-  slot(0, "15:40", "16:10", "Break", "Campus"),
-  slot(0, "16:10", "17:25", "Machine Learning", "Campus"),
-  slot(0, "17:30", "19:30", "Volleyball / badminton", "Sports Centre"),
-  slot(0, "19:30", "20:00", "Travel home", "Sports Centre → Home"),
-  slot(0, "20:00", "22:00", "Cook + dinner", "Home"),
-  slot(0, "22:00", "23:00", "Shower / free", "Home"),
-  slot(0, "01:00", "09:00", "Sleep", "Home"),
-  // TUESDAY
-  slot(1, "09:00", "11:00", "Paid work", "Home"),
-  slot(1, "11:00", "12:00", "Cubing / recording", "Home"),
-  slot(1, "12:00", "13:00", "Personal app coding", "Home"),
-  slot(1, "13:00", "13:40", "Get ready", "Home"),
-  slot(1, "13:40", "14:20", "Travel to campus", "Home → Campus"),
-  slot(1, "14:20", "15:35", "Computer Graphics", "Campus"),
-  slot(1, "15:35", "16:25", "Warm-up / transition", "Campus → Sports Centre"),
-  slot(1, "16:25", "17:50", "Badminton Beginning", "Sports Centre"),
-  slot(1, "17:50", "20:00", "Additional badminton / volleyball", "Sports Centre"),
-  slot(1, "20:00", "20:40", "Travel home", "Sports Centre → Home"),
-  slot(1, "20:40", "22:00", "Cook + dinner", "Home"),
-  slot(1, "22:00", "22:50", "Watch / review sport footage", "Home"),
-  slot(1, "22:50", "23:00", "Get ready for bed", "Home"),
-  slot(1, "22:50", "06:50", "Sleep", "Home"),
-  // WEDNESDAY
-  slot(2, "08:00", "08:50", "Computer Organization", "Campus"),
-  slot(2, "08:50", "10:50", "Paid work", "Campus"),
-  slot(2, "10:50", "11:20", "Homework", "Campus"),
-  slot(2, "11:30", "12:20", "Computer Organization", "Campus"),
-  slot(2, "12:20", "13:20", "Language study", "Campus"),
-  slot(2, "13:20", "13:50", "Break", "Campus"),
-  slot(2, "13:50", "14:40", "Programming Languages", "Campus"),
-  slot(2, "14:40", "15:40", "Personal app coding", "Home"),
-  slot(2, "15:40", "16:10", "Break", "Home"),
-  slot(2, "16:10", "17:25", "Machine Learning", "Campus"),
-  slot(2, "17:25", "18:00", "Travel home", "Campus → Home"),
-  slot(2, "18:00", "20:00", "Cook + dinner", "Home"),
-  slot(2, "20:00", "22:00", "Paid work", "Home"),
-  slot(2, "22:00", "23:00", "Language study", "Home"),
-  slot(2, "23:00", "01:00", "Free time", "Home"),
-  slot(2, "01:00", "09:00", "Sleep", "Home"),
-  // THURSDAY
-  slot(3, "09:00", "11:00", "Paid work", "Home"),
-  slot(3, "11:00", "12:00", "Homework", "Home"),
-  slot(3, "12:00", "13:00", "Language study", "Home"),
-  slot(3, "13:00", "13:40", "Cubing / recording", "Home"),
-  slot(3, "13:40", "14:20", "Travel to campus", "Home → Campus"),
-  slot(3, "14:20", "15:35", "Computer Graphics", "Campus"),
-  slot(3, "15:35", "16:00", "Transition / warm-up", "Campus → Sports Centre"),
-  slot(3, "16:00", "20:00", "Volleyball / badminton", "Sports Centre"),
-  slot(3, "20:00", "20:40", "Travel home", "Sports Centre → Home"),
-  slot(3, "20:40", "22:40", "Cook + dinner", "Home"),
-  slot(3, "22:40", "23:40", "Cubing / recording", "Home"),
-  slot(3, "23:40", "01:00", "Free / shower", "Home"),
-  slot(3, "01:00", "09:00", "Sleep", "Home"),
-  // FRIDAY
-  slot(4, "09:00", "11:00", "Paid work", "Home"),
-  slot(4, "11:00", "12:00", "Cubing / recording", "Home"),
-  slot(4, "12:00", "13:00", "Homework", "Home"),
-  slot(4, "13:00", "13:50", "Travel to campus", "Home → Campus"),
-  slot(4, "13:50", "14:40", "Programming Languages", "Campus"),
-  slot(4, "14:40", "15:20", "Travel home", "Campus → Home"),
-  slot(4, "15:20", "17:00", "Laundry", "Home"),
-  slot(4, "17:00", "18:00", "Personal app coding", "Home"),
-  slot(4, "18:00", "20:00", "Cook + dinner", "Home"),
-  slot(4, "20:00", "02:00", "Friends / social", "Out"),
-  slot(4, "02:00", "10:00", "Sleep", "Home"),
-  // SATURDAY
-  slot(5, "10:00", "11:00", "Cubing / recording", "Home"),
-  slot(5, "11:00", "14:00", "Paid work", "Home"),
-  slot(5, "14:00", "14:30", "Travel to campus", "Home → Sports Centre"),
-  slot(5, "14:30", "19:30", "Long volleyball / badminton", "Sports Centre"),
-  slot(5, "19:30", "20:10", "Travel home", "Sports Centre → Home"),
-  slot(5, "20:10", "22:10", "Cook + dinner", "Home"),
-  slot(5, "22:10", "00:10", "UK PPL theory", "Home"),
-  slot(5, "00:10", "01:00", "Anything block", "Home"),
-  slot(5, "01:00", "09:00", "Sleep", "Home"),
-  // SUNDAY
-  slot(6, "09:00", "10:40", "Laundry", "Home"),
-  slot(6, "10:40", "12:10", "Weekly shopping", "Out"),
-  slot(6, "12:10", "14:10", "Paid work", "Home"),
-  slot(6, "14:10", "15:40", "Language study", "Home"),
-  slot(6, "15:40", "17:10", "Homework", "Home"),
-  slot(6, "17:10", "19:10", "Cook + dinner", "Home"),
-  slot(6, "19:10", "21:10", "UK PPL theory", "Home"),
-  slot(6, "21:10", "22:10", "Cubing / recording", "Home"),
-  slot(6, "22:10", "23:00", "Prepare for Monday", "Home"),
-  slot(6, "23:00", "07:00", "Sleep", "Home"),
+// ── Locations ────────────────────────────────────────────────────────────────
+// Building addresses are real & searchable in OpenStreetMap. Room numbers go
+// in `notes` because OSM doesn't index rooms.
+const ZACHRY = "Zachry Engineering Education Complex, 125 Spence St, College Station, TX 77843";
+const EAB = "Engineering Activities Building B, 620 Lamar St, College Station, TX 77843";
+const PEAP = "Physical Education Activity Program Building, 632 Penberthy Blvd, College Station, TX 77840";
+
+// ── Semester end ────────────────────────────────────────────────────────────
+// Recurring courses expand weekly until this date. Texas A&M fall semester
+// typically ends mid-December; set a generous default so courses keep
+// appearing through finals.
+function defaultSemesterEnd(): string {
+  const now = new Date();
+  // End of the day on December 20 of the current year.
+  const end = new Date(now.getFullYear(), 11, 20, 23, 59, 0);
+  // If we're already past Dec 20, roll to next year (spring semester).
+  if (now.getTime() > end.getTime()) {
+    return new Date(now.getFullYear() + 1, 4, 10, 23, 59, 0).toISOString();
+  }
+  return end.toISOString();
+}
+
+const SEMESTER_END = defaultSemesterEnd();
+
+// ── Course schedule (Mon–Fri, recurring weekly) ────────────────────────────
+// Each course appears once here; `daysOfWeek` controls which days it expands
+// to. The first occurrence is anchored to the Monday of the current week so
+// the calendar shows sessions immediately.
+//
+// Day numbers: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+const COURSES: SeedEntry[] = [
+  // CSCE 312-500 Computer Organization — Mon & Wed 8:00–8:50 AM, Room 584
+  slot(1, "08:00", "08:50", "CSCE 312 Computer Organization", {
+    location: ZACHRY,
+    notes: "Room 584",
+    daysOfWeek: [1, 3], // Mon, Wed
+    recurrenceUntil: SEMESTER_END,
+  }),
+  // CSCE 312-500 Computer Organization — Mon & Wed 11:30 AM–12:20 PM, Room 310
+  slot(1, "11:30", "12:20", "CSCE 312 Computer Organization", {
+    location: ZACHRY,
+    notes: "Room 310",
+    daysOfWeek: [1, 3],
+    recurrenceUntil: SEMESTER_END,
+  }),
+  // CSCE 314-500 Programming Languages — Mon, Wed, Fri 1:50–2:40 PM, Room 350
+  slot(1, "13:50", "14:40", "CSCE 314 Programming Languages", {
+    location: ZACHRY,
+    notes: "Room 350",
+    daysOfWeek: [1, 3, 5], // Mon, Wed, Fri
+    recurrenceUntil: SEMESTER_END,
+  }),
+  // CSCE 421-500 Machine Learning — Mon & Wed 4:10–5:25 PM, Room 106 (EAB)
+  slot(1, "16:10", "17:25", "CSCE 421 Machine Learning", {
+    location: EAB,
+    notes: "Room 106",
+    daysOfWeek: [1, 3],
+    recurrenceUntil: SEMESTER_END,
+  }),
+  // CSCE 441-500 Computer Graphics — Tue & Thu 2:20–3:35 PM, Room 106 (EAB)
+  slot(2, "14:20", "15:35", "CSCE 441 Computer Graphics", {
+    location: EAB,
+    notes: "Room 106",
+    daysOfWeek: [2, 4], // Tue, Thu
+    recurrenceUntil: SEMESTER_END,
+  }),
+  // KINE-199-067 Badminton Beginners — Tue 4:25–5:40 PM, Room 132 (PEAP)
+  slot(2, "16:25", "17:40", "KINE 199 Badminton Beginners", {
+    location: PEAP,
+    notes: "Room 132",
+    daysOfWeek: [2],
+    recurrenceUntil: SEMESTER_END,
+  }),
 ];
 
-// ---- WEEK 2 --------------------------------------------------------------
-const WEEK2: SeedEntry[] = [
-  // MONDAY (day 7)
-  slot(7, "07:00", "08:00", "Get ready + travel", "Home → Campus"),
-  slot(7, "08:00", "08:50", "Computer Organization", "Campus"),
-  slot(7, "08:50", "10:50", "Paid work", "Campus"),
-  slot(7, "10:50", "11:20", "Homework", "Campus"),
-  slot(7, "11:30", "12:20", "Computer Organization", "Campus"),
-  slot(7, "12:20", "13:20", "Homework / assignment", "Campus"),
-  slot(7, "13:50", "14:40", "Programming Languages", "Campus"),
-  slot(7, "14:40", "15:40", "Paid work", "Campus"),
-  slot(7, "16:10", "17:25", "Machine Learning", "Campus"),
-  slot(7, "17:30", "19:30", "Volleyball / badminton", "Sports Centre"),
-  slot(7, "19:30", "20:00", "Travel home", "Sports Centre → Home"),
-  slot(7, "20:00", "22:00", "Cook + dinner", "Home"),
-  slot(7, "22:00", "23:00", "Shower / free", "Home"),
-  slot(7, "01:00", "09:00", "Sleep", "Home"),
-  // TUESDAY (day 8)
-  slot(8, "09:00", "11:00", "Paid work", "Home"),
-  slot(8, "11:00", "12:00", "Cubing / recording", "Home"),
-  slot(8, "12:00", "13:00", "Personal app coding", "Home"),
-  slot(8, "13:00", "13:40", "Get ready", "Home"),
-  slot(8, "13:40", "14:20", "Travel to campus", "Home → Campus"),
-  slot(8, "14:20", "15:35", "Computer Graphics", "Campus"),
-  slot(8, "15:35", "16:25", "Warm-up / transition", "Campus → Sports Centre"),
-  slot(8, "16:25", "17:50", "Badminton Beginning", "Sports Centre"),
-  slot(8, "17:50", "20:00", "Additional badminton / volleyball", "Sports Centre"),
-  slot(8, "20:00", "20:40", "Travel home", "Sports Centre → Home"),
-  slot(8, "20:40", "22:00", "Cook + dinner", "Home"),
-  slot(8, "22:00", "22:50", "Watch / review sport footage", "Home"),
-  slot(8, "22:50", "23:00", "Get ready for bed", "Home"),
-  slot(8, "22:50", "06:50", "Sleep", "Home"),
-  // WEDNESDAY (day 9)
-  slot(9, "08:00", "08:50", "Computer Organization", "Campus"),
-  slot(9, "08:50", "10:50", "Paid work", "Campus"),
-  slot(9, "10:50", "11:20", "Homework", "Campus"),
-  slot(9, "11:30", "12:20", "Computer Organization", "Campus"),
-  slot(9, "12:20", "13:20", "Language study", "Campus"),
-  slot(9, "13:50", "14:40", "Programming Languages", "Campus"),
-  slot(9, "14:40", "15:40", "Personal app coding", "Home"),
-  slot(9, "16:10", "17:25", "Machine Learning", "Campus"),
-  slot(9, "17:25", "18:00", "Travel home", "Campus → Home"),
-  slot(9, "18:00", "20:00", "Cook + dinner", "Home"),
-  slot(9, "20:00", "22:00", "Paid work", "Home"),
-  slot(9, "22:00", "23:00", "Language study", "Home"),
-  slot(9, "23:00", "01:00", "Free time", "Home"),
-  slot(9, "01:00", "09:00", "Sleep", "Home"),
-  // THURSDAY (day 10)
-  slot(10, "09:00", "11:00", "Homework", "Home"),
-  slot(10, "11:00", "12:30", "Paid work", "Home"),
-  slot(10, "12:30", "13:15", "Cubing / recording", "Home"),
-  slot(10, "13:15", "14:20", "Travel to campus", "Home → Campus"),
-  slot(10, "14:20", "15:35", "Computer Graphics", "Campus"),
-  slot(10, "15:35", "16:00", "Transition / warm-up", "Campus → Sports Centre"),
-  slot(10, "16:00", "20:00", "Volleyball / badminton", "Sports Centre"),
-  slot(10, "20:00", "20:40", "Travel home", "Sports Centre → Home"),
-  slot(10, "20:40", "22:40", "Cook + dinner", "Home"),
-  slot(10, "22:40", "23:40", "Cubing / recording", "Home"),
-  slot(10, "23:40", "00:30", "Language study", "Home"),
-  slot(10, "01:00", "09:00", "Sleep", "Home"),
-  // FRIDAY (day 11)
-  slot(11, "09:00", "11:00", "Paid work", "Home"),
-  slot(11, "11:00", "12:00", "Cubing / recording", "Home"),
-  slot(11, "12:00", "13:20", "Homework", "Home"),
-  slot(11, "13:20", "13:50", "Travel to campus", "Home → Campus"),
-  slot(11, "13:50", "14:40", "Programming Languages", "Campus"),
-  slot(11, "14:40", "15:20", "Travel home", "Campus → Home"),
-  slot(11, "15:20", "16:20", "Personal app coding", "Home"),
-  slot(11, "16:20", "17:20", "Laundry", "Home"),
-  slot(11, "17:20", "19:20", "Cook + dinner", "Home"),
-  slot(11, "19:20", "02:00", "Friends / social", "Out"),
-  slot(11, "02:00", "10:00", "Sleep", "Home"),
-  // SATURDAY (day 12)
-  slot(12, "10:00", "11:00", "Cubing / recording", "Home"),
-  slot(12, "11:00", "14:00", "Paid work", "Home"),
-  slot(12, "14:00", "14:30", "Travel to campus", "Home → Sports Centre"),
-  slot(12, "14:30", "19:30", "Long volleyball / badminton", "Sports Centre"),
-  slot(12, "19:30", "20:10", "Travel home", "Sports Centre → Home"),
-  slot(12, "20:10", "22:10", "Cook + dinner", "Home"),
-  slot(12, "22:10", "01:10", "UK PPL theory", "Home"),
-  slot(12, "01:10", "02:00", "Anything block", "Home"),
-  slot(12, "02:00", "10:00", "Sleep", "Home"),
-  // SUNDAY (day 13)
-  slot(13, "10:00", "11:30", "Language study", "Home"),
-  slot(13, "11:30", "13:10", "Laundry", "Home"),
-  slot(13, "13:10", "14:40", "Weekly shopping", "Out"),
-  slot(13, "14:40", "17:40", "Paid work", "Home"),
-  slot(13, "17:40", "19:10", "Homework", "Home"),
-  slot(13, "19:10", "21:10", "Volleyball / badminton", "Sports Centre"),
-  slot(13, "21:10", "21:50", "Travel home", "Sports Centre → Home"),
-  slot(13, "21:50", "23:50", "Cook + dinner", "Home"),
-  slot(13, "23:50", "00:50", "Language study", "Home"),
-  slot(13, "00:50", "01:30", "Cubing / recording", "Home"),
-  slot(13, "23:00", "07:00", "Sleep", "Home"),
+// ── Supporting life blocks (recurring weekly, no room number) ───────────────
+// These keep the calendar realistic so the auto-optimiser and travel-time
+// features have something to work with. Times are local.
+const LIFE_BLOCKS: SeedEntry[] = [
+  // Sleep — Mon night → Tue morning (encodes overnight via endDayOffset)
+  slot(0, "23:00", "07:00", "Sleep", { daysOfWeek: [0, 1, 2, 3, 4, 5, 6], recurrenceUntil: SEMESTER_END }),
+  // Evenings — cook + dinner
+  slot(0, "18:30", "20:00", "Cook + dinner", { daysOfWeek: [1, 3], recurrenceUntil: SEMESTER_END }),
+  slot(2, "18:30", "20:00", "Cook + dinner", { daysOfWeek: [2, 4], recurrenceUntil: SEMESTER_END }),
+  slot(4, "18:30", "20:00", "Cook + dinner", { daysOfWeek: [5], recurrenceUntil: SEMESTER_END }),
+  // Homework blocks on non-class mornings
+  slot(0, "09:00", "11:00", "Homework", { daysOfWeek: [2, 4, 5], recurrenceUntil: SEMESTER_END }),
+  // Personal coding / project time
+  slot(0, "20:00", "22:00", "Personal app coding", { daysOfWeek: [1, 3, 5], recurrenceUntil: SEMESTER_END }),
 ];
 
-export const SEED_ENTRIES: SeedEntry[] = [...WEEK1, ...WEEK2];
+// Combine: courses first (so they render prominently), then life blocks.
+export const SEED_ENTRIES: SeedEntry[] = [...COURSES, ...LIFE_BLOCKS];
 
-// Turn a seed entry into concrete start/end ISO strings, anchored to the
-// Monday of "this week" at 00:00 local.
+// ── Time resolution (LOCAL, not UTC) ─────────────────────────────────────────
+// The old version added milliseconds to a UTC epoch, which meant "08:00" in
+// the seed became 08:00 UTC — wrong local time in any non-UTC timezone.
+//
+// The fix: build the Date from LOCAL components (year, month, day, hour, min)
+// using the Monday-of-this-week as the anchor. `new Date(y, m, d, h, mi)`
+// respects the browser's timezone, so "08:00" in the seed is 08:00 local.
 export function resolveSeedTimes(
   entry: SeedEntry,
-  weekStartMondayMs: number
+  weekStartMonday: Date
 ): { start: Date; end: Date } {
-  const dayMs = 24 * 60 * 60 * 1000;
-  const start = new Date(weekStartMondayMs + entry.day * dayMs + entry.startMins * 60 * 1000);
-  const endOffset = (entry.endDayOffset ?? 0) * dayMs;
-  const end = new Date(
-    weekStartMondayMs + entry.day * dayMs + endOffset + entry.endMins * 60 * 1000
-  );
-  return { start, end };
+  // Clone the Monday and advance to the entry's day.
+  const startDay = new Date(weekStartMonday);
+  startDay.setDate(startDay.getDate() + entry.day);
+  startDay.setHours(Math.floor(entry.startMins / 60), entry.startMins % 60, 0, 0);
+
+  const endDay = new Date(weekStartMonday);
+  endDay.setDate(endDay.getDate() + entry.day + (entry.endDayOffset ?? 0));
+  endDay.setHours(Math.floor(entry.endMins / 60), entry.endMins % 60, 0, 0);
+
+  return { start: startDay, end: endDay };
+}
+
+// Build the recurrence rule for a seed entry (or null if one-off).
+export function recurrenceForSeed(entry: SeedEntry): RecurrenceRule | null {
+  if (!entry.daysOfWeek || entry.daysOfWeek.length === 0) return null;
+  return {
+    freq: "weekly",
+    interval: 1,
+    until: entry.recurrenceUntil,
+    daysOfWeek: entry.daysOfWeek,
+  };
 }
 
 // Pre-compute the inferred meta for a seed title so the seeder writes full rows.
 export function metaForTitle(title: string) {
   return inferMetaFromTitle(title);
 }
+
+// Exported so the seeder can log/validate the semester end.
+export const SEED_SEMESTER_END = SEMESTER_END;

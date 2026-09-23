@@ -31,11 +31,11 @@
 import { PrismaClient, type Event, type PushSubscription } from "@prisma/client";
 
 export const ALERT_TIMING = {
-  LOOK_BACK_MIN: 20,
+  LOOK_BACK_MIN: 10, // was 20 — tighter now that cron runs every 5 min
   LOOK_AHEAD_MIN: 45,
   AT_START_LEAD_MIN: 2,
-  BEFORE_LEAD_MIN: 16,
-  STALE_CUTOFF_MIN: 25,
+  BEFORE_LEAD_MIN: 6, // was 16 — slightly > 5-min cron interval
+  STALE_CUTOFF_MIN: 12, // was 25 — tighter cadence, less stale tolerance
   SENT_TTL_DAYS: 7,
 } as const;
 
