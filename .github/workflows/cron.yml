@@ -1,0 +1,103 @@
+# Triggers the Netlify `check-alerts` on-demand function every 5 minutes.
+#
+# Why a GitHub Actions cron instead of Netlify's built-in scheduler?
+#   • Standard HTTP — the function is a normal Netlify Function (no
+#     `schedule` key in netlify.toml), so it's testable locally with
+#     `netlify dev` + `curl`.
+#   • The schedule lives in version control, so changes are reviewable and
+#     auditable in the repo history.
+#   • Portable — easy to swap to cron-job.org, Vercel Cron, or anything else
+#     later by just changing the trigger.
+#
+# ── Setup ────────────────────────────────────────────────────────────────────
+# 1. Generate a strong secret, e.g.:
+#      openssl rand -hex 32
+# 2. Set it as `CRON_SECRET` in BOTH:
+#      • Netlify dashboard → Site settings → Environment variables
+#      • GitHub repo → Settings → Secrets and variables → Actions →
+#        "New repository secret" → name: CRON_SECRET
+# 3. Set the Netlify function URL as a repo variable (NOT a secret — it's
+#    public anyway, the secret is what protects it):
+#      GitHub repo → Settings → Secrets and variables → Actions →
+#      Variables → "New variable" → name: NETLIFY_FUNCTION_URL
+#      value: https://your-site.netlify.app/.netlify/functions/check-alerts
+#
+# After both are set, push this workflow. The Actions tab will show runs
+# every 5 minutes. If a run fails, GitHub shows the failure in the Actions UI.
+
+name: Alert check cron
+
+on:
+  schedule:
+    # Every 5 minutes. GitHub Actions cron uses 5-field standard cron
+    # (minute hour day month weekday). `*/5 * * * *` = every 5th minute.
+    # Note: GitHub Actions scheduled workflows can run a few minutes late
+    # during periods of high load, but the alert-checker's look-back window
+    # in src/lib/alert-checker.ts absorbs that jitter.
+    - cron: '*/5 * * * *'
+  # Allow manual triggering from the Actions tab for testing.
+  workflow_dispatch:
+
+# Prevent overlapping runs: if a previous run is still going (unlikely —
+# the check takes <1s with no alerts), cancel it. With a 5-min schedule
+# and ~1s execution time, overlaps essentially never happen, but this
+# guard keeps the logs clean if they ever do.
+concurrency:
+  group: alert-check-cron
+  cancel-in-progress: false
+
+jobs:
+  trigger-alert-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Trigger Netlify alert-check function
+        env:
+          # NETLIFY_FUNCTION_URL is a repo *variable* (the URL is public).
+          # CRON_SECRET is a repo *secret* (masked in logs).
+          NETLIFY_FUNCTION_URL: ${{ vars.NETLIFY_FUNCTION_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          # Fail fast if the URL or secret isn't configured — better an
+          # obvious Actions failure than silently doing nothing.
+          if [ -z "$NETLIFY_FUNCTION_URL" ]; then
+            echo "::error::NETLIFY_FUNCTION_URL variable is not set. Add it in Settings → Secrets and variables → Actions → Variables."
+            exit 1
+          fi
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret is not set. Add it in Settings → Secrets and variables → Actions → New repository secret."
+            exit 1
+          fi
+
+          echo "Triggering: $NETLIFY_FUNCTION_URL"
+          # -sS : silent but show errors
+          # -f  : fail (non-zero exit) on HTTP 4xx/5xx
+          # -m 30 : 30-second timeout (the function should return in <5s)
+          # -H  : send the secret in the x-api-key header
+          # -w  : print the HTTP status + elapsed time to stderr for the log
+          response=$(curl -sS -f -m 30 \
+            -H "x-api-key: $CRON_SECRET" \
+            -H "Accept: application/json" \
+            -w "\n%{http_code} %{time_total}s" \
+            "$NETLIFY_FUNCTION_URL" 2>&1) || {
+              echo "::error::curl failed:"
+              echo "$response"
+              exit 1
+            }
+
+          # The last line of `response` is the curl -w output (status + time).
+          # Everything before is the JSON body from the function.
+          status_line=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          echo "HTTP status + time: $status_line"
+          echo "Response body:"
+          # Pretty-print the JSON if jq is available, otherwise dump raw.
+          if command -v jq >/dev/null 2>&1; then
+            echo "$body" | jq . 2>/dev/null || echo "$body"
+          else
+            echo "$body"
+          fi
+
+          # The function returns 200 on success. With `curl -f`, a non-2xx
+          # status already exited above, so reaching here means success.
+          echo "✅ Alert check triggered successfully"

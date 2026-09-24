@@ -8,18 +8,17 @@
   # DATABASE_URL                    — Neon pooled connection string
   # NEXT_PUBLIC_VAPID_PUBLIC_KEY    — VAPID public key (from `npx web-push generate-vapid-keys`)
   # VAPID_PRIVATE_KEY               — VAPID private key (server-only)
+  # CRON_SECRET                     — shared secret for the check-alerts function
+  #                                   (GitHub Actions sends this in the x-api-key header)
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# ─── Scheduled Functions ────────────────────────────────────────────────────
+# ─── Functions ────────────────────────────────────────────────────────────────
+# `check-alerts` is now an ON-DEMAND function (no `schedule` key). It is
+# triggered every 5 minutes by the GitHub Actions workflow in
+# `.github/workflows/cron.yml`, which `curl`s the function URL with the
+# `x-api-key` header. This is more portable than Netlify's native scheduler
+# and keeps the schedule in version control.
 [functions]
   directory = "netlify/functions"
-
-# Every 5 minutes (was 15). The alert-checker uses a look-back window so it
-# never misses an event that started between runs. 5-min cadence caps the
-# closed-PWA notification latency at ~5 min instead of ~15 min.
-# Free-tier budget: 5 * 24 * 30 = 3,600 invocations/month (well under the
-# 125,000-function-call limit on Netlify's free tier).
-[functions."check-alerts"]
-  schedule = "*/5 * * * *"
