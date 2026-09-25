@@ -34,7 +34,7 @@ on:
     # Note: GitHub Actions scheduled workflows can run a few minutes late
     # during periods of high load, but the alert-checker's look-back window
     # in src/lib/alert-checker.ts absorbs that jitter.
-    - cron: '*/5 * * * *'
+    - cron: '4-59/5 * * * *'
   # Allow manual triggering from the Actions tab for testing.
   workflow_dispatch:
 
